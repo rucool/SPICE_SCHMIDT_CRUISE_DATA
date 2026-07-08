@@ -3,23 +3,23 @@ channels:
   - conda-forge
 dependencies:
   - python=3.10
-  - numpy
-  - pandas
-  - xarray
-  - matplotlib
-  - cartopy
-  - cmocean
-  - netcdf4
-  - dask
-  - scipy
-  - tqdm
-  - simplekml
+  - numpy=1.26
+  - pandas=2.2
+  - xarray=2024.3
+  - matplotlib=3.8
+  - cartopy=0.22
+  - cmocean=4.0
+  - cmcrameri=1.8
+  - netcdf4=1.6
+  - dask=2024.4
+  - scipy=1.13
+  - tqdm=4.66
+  - simplekml=1.3
+  - gsw=3.6
+  - seawater=3.3
+  - erddapy=2.2
+  - copernicusmarine=1.3
+  - cool_maps=1.0
   - pip
   - pip:
-      - copernicusmarine
-      - erddapy
-      - gsw
-      - seawater
-      - cool-maps
       - thermohalinesteps
-      - cmcrameri
