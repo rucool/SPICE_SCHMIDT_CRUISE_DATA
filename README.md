@@ -8,7 +8,7 @@ This repo holds the core Python logic only. Cron wrappers, absolute deployment p
 
 - **`cmems_download.py`** — pulls gridded satellite products from Copernicus Marine (SSH/SLA, SST, chlorophyll, sea surface salinity + density) into `cmems_data/<product>/`. Shared by the two plotting scripts below.
 - **`SPICE_CMEMS_SAT.py`** — generates one map per variable/day, overlaying every enabled platform's track (glider, ship) from `PLATFORMS` in the script. Copies output to the web folder configured in `config.py`.
-- **`cmems_sla_adt.py`** — generates a KMZ (SSH/SLA + geostrophic currents) for viewing in Google Earth.
+- **`cmems_sla_adt.py`** — generates a KMZ (SSH/SLA) for viewing in Google Earth.
 - **`ru29_staircase.py`** — pulls ru29 glider profiles from the Rutgers glider ERDDAP, detects thermohaline staircases, and writes both the staircase figures and the glider's position track (`ru29_latest_track.csv`) that `SPICE_CMEMS_SAT.py` overlays.
 - **`get_falkor_position.py`** — fetches R/V Falkor (too)'s position from FSU/COAPS SAMOS (public THREDDS/OPeNDAP feed, no API key required) and writes a rolling track (`falkor_track.csv`).
 
