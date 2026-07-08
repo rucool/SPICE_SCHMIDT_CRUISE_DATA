@@ -1,8 +1,8 @@
 # SPICE_SCHMIDT_CRUISE_DATA
 
-Satellite and platform-tracking figure pipeline supporting the ru29 glider mission and the R/V Falkor (too) / Schmidt Ocean Institute cruise, in the tropical western Atlantic near the Amazon/Orinoco plume.
+This project is a dedicated investigation into how salt finger-driven double-diffusive mixing influences nutrient supply and ecosystem productivity in the western equatorial North Atlantic. This region is a known hotspot for "thermohaline staircases"-oceanic structures formed by salt fingering where warm, salty subtropical waters overlie cooler, fresher Antarctic Intermediate Waters. While mechanical turbulence is typically considered the primary driver of nutrient upwelling in the open ocean, double-diffusive processes like salt fingering can transfer dissolved constituents more efficiently, potentially supplying a significant portion of "new" nitrogen to the surface. Accordingly, the science party is referring to this cruise as Project SPICE (Salt finger Processes Influence on Carbon and Ecosystem dynamics).
 
-This repo holds the core Python logic only. Cron wrappers, absolute deployment paths, and generated output (figures, downloaded NetCDFs, logs) live on the production server and are not tracked here.
+This repo holds the satellite and platform-tracking figure pipeline supporting the ru29 glider mission and the R/V Falkor (too) / Schmidt Ocean Institute cruise for this project - the core Python logic only. Cron wrappers, absolute deployment paths, and generated output (figures, downloaded NetCDFs, logs) live on the production server and are not tracked here.
 
 ## Scripts
 
