@@ -121,6 +121,7 @@ for var_name in var_list:
         cbar.set_label(f'{var_name} m {time_val.strftime("%Y-%m-%dT%H:%M:%SZ")}', color='w', labelpad=20)
 
         fname = f'{base_folder}/{var_name}/{var_name}_{time_val.strftime("%Y%m%dT%H%M%S")}.png'
+        fig.canvas.draw()  # force full render before tight-bbox crop
         fig.savefig(fname, bbox_inches='tight', transparent=True, format='png')
         plt.close(fig)
         fig_paths.append(fname)

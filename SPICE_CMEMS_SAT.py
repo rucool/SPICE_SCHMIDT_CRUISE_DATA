@@ -214,11 +214,23 @@ def plot_and_save_variable(ds, var, bbox=TROP_WTRN_ATL_EXTENT, base_dir=FIG_BASE
         unit = variable_units.get(var, "")
         cbar_label = f"{var} ({unit})" if unit else var
         fig.colorbar(im, ax=ax, orientation="horizontal", label=cbar_label, shrink=0.8, pad=0.08)
-        ax.set_title(f"{var} {date:%Y-%m-%d}")
+        ax.set_title(f"{var} {date:%Y-%m-%d %H:%M}")
+        # cartopy 0.25.0 bug workaround: GeoAxes hides its xaxis, which makes
+        # matplotlib's automatic title-positioning logic compute an infinite
+        # y-position for the title (falls back badly instead of cleanly), which
+        # then poisons ax.get_tightbbox() (used by bbox_inches="tight") - so the
+        # saved PNG could get cropped down to near-blank. No fixed cartopy
+        # release exists on PyPI yet as of this writing.
+        ax._autotitlepos = False
+        ax.title.set_position((0.5, 1.02))
 
         out_dir = os.path.join(base_dir, f"{date:%Y}", f"{date:%m}", f"{date:%d}", var)
         os.makedirs(out_dir, exist_ok=True)
         out_path = os.path.join(out_dir, f"{var}_{date:%Y%m%d}_{run_ts}.png")
+        # Force a full render before the tight-bbox crop, otherwise lazily-drawn
+        # GeoAxes features (coastlines/land) can end up excluded from the saved
+        # bbox on some matplotlib/cartopy version combos, cropping to near-blank.
+        fig.canvas.draw()
         fig.savefig(out_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
         paths.append(out_path)
@@ -243,6 +255,9 @@ for product_name, plot_vars in PRODUCT_PLOT_VARS.items():
 
 print("Saved figures:", saved_paths)
 
-# Copy entire figure tree to web folder
-shutil.copytree(FIG_BASE_DIR, WEB_FOLDER, dirs_exist_ok=True)
-print(f'Copied {FIG_BASE_DIR} to {WEB_FOLDER}')
+# Copy entire figure tree to web folder (skipped when WEB_FOLDER is unset, e.g. test runs)
+if WEB_FOLDER:
+    shutil.copytree(FIG_BASE_DIR, WEB_FOLDER, dirs_exist_ok=True)
+    print(f'Copied {FIG_BASE_DIR} to {WEB_FOLDER}')
+else:
+    print(f'WEB_FOLDER not set - figures left in {FIG_BASE_DIR}')

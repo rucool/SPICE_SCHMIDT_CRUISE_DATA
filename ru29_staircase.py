@@ -87,6 +87,14 @@ ds_id = 'ru29-20260623T2102-profile-sci-rt'
 ## Load flight data
 variables = ['time','profile_time','profile_id','depth', 'latitude', 'longitude', 'salinity','temperature','pressure']
 gdf = get_erddap_dataset(ds_id, server='http://slocum-data.marine.rutgers.edu/erddap', variables = variables, filetype='dataframe')
+print(f"ERDDAP returned shape={gdf.shape}, columns={list(gdf.columns)}")
+if len(gdf.columns) != len(variables):
+    raise RuntimeError(
+        f"ERDDAP returned {len(gdf.columns)} columns {list(gdf.columns)} but "
+        f"expected {len(variables)} matching {variables}. erddapy's output shape "
+        f"changed (likely a version difference) - fix the 'variables' list or "
+        f"erddapy pin before rerunning, rather than silently mislabeling columns."
+    )
 gdf.columns = variables
 gdf=gdf.rename(columns={'latitude':'lat','longitude':'lon'})
 gdf['time']=pd.to_datetime(gdf.time)
@@ -95,30 +103,40 @@ gdf=gdf.set_index('time')
 print('RU29 data retrieved')
 
 
-def convert_per_profile(group):
-    group = group.copy()
-    group['absolute_salinity'] = gsw.SA_from_SP(
-        group.salinity, group.pressure, group.lon, group.lat
-    )
-    group['conservative_temperature'] = gsw.CT_from_t(
-        group.absolute_salinity, group.temperature, group.pressure
-    )
-    return group
-
-gdf = gdf.groupby('profile_id', group_keys=False).apply(convert_per_profile)
+# SA_from_SP/CT_from_t are purely row-wise (each row's own salinity/pressure/
+# lon/lat) - no per-profile aggregation needed, so this runs vectorized over
+# the whole frame instead of groupby('profile_id').apply(...), which avoids the
+# include_groups/group_keys churn across pandas versions entirely (newer pandas
+# excludes the grouping column from apply() by default, and even removed the
+# include_groups=True escape hatch that used to restore the old behavior).
+gdf['absolute_salinity'] = gsw.SA_from_SP(
+    gdf['salinity'], gdf['pressure'], gdf['lon'], gdf['lat']
+)
+gdf['conservative_temperature'] = gsw.CT_from_t(
+    gdf['absolute_salinity'], gdf['temperature'], gdf['pressure']
+)
 
 # --- 1. SORT ONCE ---
 print("Sorting data globally...")
 gdf_sorted = gdf.reset_index().sort_values(by=['profile_id', 'pressure'])
 
-# Backfill mode: filter profiles to only those up to TARGET_DATE + RUN_TS
+# Cut off at TARGET_DATE + RUN_TS when backfilling a past day, or at today +
+# RUN_TS otherwise - always applied, not just in backfill mode, so batch-
+# generating multiple 'today' slots at once (e.g. cleanup_and_rerun.sh) doesn't
+# silently give every slot the same full/current data. If RUN_TS isn't set at
+# all (true live cron with no RUN_TS export), fall back to the actual current
+# UTC time, which is a no-op filter since the data can't be from the future.
 _target = os.environ.get("TARGET_DATE", "")
-if _target:
-    _h = int(os.environ.get("RUN_TS", "0000")[:2])
-    _m = int(os.environ.get("RUN_TS", "0000")[2:])
-    _cutoff = pd.Timestamp(_target, tz="UTC") + pd.Timedelta(hours=_h, minutes=_m)
-    gdf_sorted = gdf_sorted[pd.to_datetime(gdf_sorted["profile_time"]) <= _cutoff]
-    print(f"Backfill mode: {len(gdf_sorted['profile_id'].unique())} profiles up to {_cutoff}")
+_run_ts_env = os.environ.get("RUN_TS", "")
+if _run_ts_env:
+    _h, _m = int(_run_ts_env[:2]), int(_run_ts_env[2:])
+else:
+    _now = pd.Timestamp.now(tz="UTC")
+    _h, _m = _now.hour, _now.minute
+_base_date = pd.Timestamp(_target, tz="UTC") if _target else pd.Timestamp.now(tz="UTC").normalize()
+_cutoff = _base_date + pd.Timedelta(hours=_h, minutes=_m)
+gdf_sorted = gdf_sorted[pd.to_datetime(gdf_sorted["profile_time"]) <= _cutoff]
+print(f"{'Backfill' if _target else 'Live'} mode: {len(gdf_sorted['profile_id'].unique())} profiles up to {_cutoff}")
 
 
 # --- 2. PROCESS EACH PROFILE ---
@@ -259,14 +277,19 @@ print(f"Done. Profiles with results: {len(df_out_all)}")
 # --- DIAGNOSTIC: find a deep profile and test classify_staircase with regridding ---
 gdf_sorted = gdf.reset_index().sort_values(by=['profile_id', 'pressure'])
 
-# Backfill mode: filter profiles to only those up to TARGET_DATE + RUN_TS
+# Same always-applied cutoff as above (see comment there) - kept in sync
+# since this diagnostic section rebuilds gdf_sorted from scratch.
 _target = os.environ.get("TARGET_DATE", "")
-if _target:
-    _h = int(os.environ.get("RUN_TS", "0000")[:2])
-    _m = int(os.environ.get("RUN_TS", "0000")[2:])
-    _cutoff = pd.Timestamp(_target, tz="UTC") + pd.Timedelta(hours=_h, minutes=_m)
-    gdf_sorted = gdf_sorted[pd.to_datetime(gdf_sorted["profile_time"]) <= _cutoff]
-    print(f"Backfill mode: {len(gdf_sorted['profile_id'].unique())} profiles up to {_cutoff}")
+_run_ts_env = os.environ.get("RUN_TS", "")
+if _run_ts_env:
+    _h, _m = int(_run_ts_env[:2]), int(_run_ts_env[2:])
+else:
+    _now = pd.Timestamp.now(tz="UTC")
+    _h, _m = _now.hour, _now.minute
+_base_date = pd.Timestamp(_target, tz="UTC") if _target else pd.Timestamp.now(tz="UTC").normalize()
+_cutoff = _base_date + pd.Timedelta(hours=_h, minutes=_m)
+gdf_sorted = gdf_sorted[pd.to_datetime(gdf_sorted["profile_time"]) <= _cutoff]
+print(f"{'Backfill' if _target else 'Live'} mode: {len(gdf_sorted['profile_id'].unique())} profiles up to {_cutoff}")
 
 # pick the deepest profile available
 max_p_per_profile = gdf_sorted.groupby('profile_id')['pressure'].max()
@@ -342,7 +365,7 @@ for col in ['mixed_layer', 'gradient_layer']:
 
 # --- one lat/lon/time per profile, sorted chronologically ---
 prof_coords = (
-    gdf.reset_index()
+    gdf_sorted
        .groupby('profile_id', sort=False)
        .agg(lat=('lat', 'first'), lon=('lon', 'first'),
             profile_time=('profile_time', 'first'))
@@ -364,7 +387,7 @@ if not _target:  # do not overwrite current track CSV during backfill
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "ru29_latest_track.csv"), index=False)
 
 # add distance to all dataframes
-gdf_dist         = gdf.reset_index().copy()
+gdf_dist         = gdf_sorted.copy()
 gdf_dist['dist_km'] = gdf_dist['profile_id'].map(dist_map)
 df_ls['dist_km'] = df_ls['profile_id'].map(dist_map)
 if not df_mixes.empty:
@@ -381,6 +404,16 @@ run_ts = run_time.strftime("%Y%m%d_") + os.environ.get("RUN_TS", "") + "00" if o
 FIG_BASE_DIR = "./satellite_figs"
 _plot_date = pd.Timestamp(_target) if _target else run_time
 daily_dir = os.path.join(FIG_BASE_DIR, _plot_date.strftime("%Y"), _plot_date.strftime("%m"), _plot_date.strftime("%d"))
+
+# Datetime shown above every plot title below: the backfill cutoff (target
+# date + RUN_TS) when backfilling, otherwise the actual run time.
+if _target:
+    _title_h = int(os.environ.get("RUN_TS", "0000")[:2])
+    _title_m = int(os.environ.get("RUN_TS", "0000")[2:])
+    _title_dt = pd.Timestamp(_target, tz="UTC") + pd.Timedelta(hours=_title_h, minutes=_title_m)
+else:
+    _title_dt = pd.Timestamp(run_time, tz="UTC")
+title_datetime_str = _title_dt.strftime("%Y-%m-%d %H:%M") + " UTC"
 
 ru29_plot_vars = ["CT", "ml_height", "turner", "sigma", "classification", "counts", "depth_range"]
 for v in ru29_plot_vars:
@@ -495,8 +528,9 @@ ax.set_ylabel('Pressure (dbar)')
 ax.set_xlabel('Distance along track (km)')
 cb = plt.colorbar(sc, ax=ax, pad=0.01)
 cb.set_label('CT (°C)')
-ax.set_title('Conservative Temperature  |  white/black = staircase mixed layers', loc='left')
+ax.set_title(f"{title_datetime_str}\nConservative Temperature  |  white/black = staircase mixed layers", loc='left')
 add_station_markers(ax, fig)
+plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_CT', f'ru29_CT_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
 
@@ -515,8 +549,9 @@ ax.invert_yaxis()
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('Pressure (dbar)')
 ax.set_xlabel('Distance along track (km)')
-ax.set_title('Mixed-layer height', loc='left')
+ax.set_title(f"{title_datetime_str}\nMixed-layer height", loc='left')
 add_station_markers(ax, fig)
+plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_ml_height', f'ru29_ml_height_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
 
@@ -535,8 +570,9 @@ ax.invert_yaxis()
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('Pressure (dbar)')
 ax.set_xlabel('Distance along track (km)')
-ax.set_title('Turner angle  (red = salt fingering >45°, blue = diffusive convection <-45°)', loc='left')
+ax.set_title(f"{title_datetime_str}\nTurner angle  (red = salt fingering >45°, blue = diffusive convection <-45°)", loc='left')
 add_station_markers(ax, fig)
+plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_turner', f'ru29_turner_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
 
@@ -617,8 +653,9 @@ ax.set_ylabel('Pressure (dbar)')
 ax.set_xlabel('Distance along track (km)')
 cb = plt.colorbar(sc, ax=ax, pad=0.01)
 cb.set_label(' (kg m$^{-3}$)')
-ax.set_title('Potential density (sigma1)  |  white/black = staircase mixed layers', loc='left')
+ax.set_title(f"{title_datetime_str}\nPotential density (sigma1)  |  white/black = staircase mixed layers", loc='left')
 add_station_markers(ax, fig)
+plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_sigma', f'ru29_sigma_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
 
@@ -654,8 +691,9 @@ ax.invert_yaxis()
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('Pressure (dbar)')
 ax.set_xlabel('Distance along track (km)')
-ax.set_title('Staircase layer classification', loc='left')
+ax.set_title(f"{title_datetime_str}\nStaircase layer classification", loc='left')
 add_station_markers(ax, fig, extra_handles=class_legend)
+plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_classification', f'ru29_classification_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
 
@@ -678,9 +716,10 @@ cb.set_label('# staircases')
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('# Staircases detected')
 ax.set_xlabel('Distance along track (km)')
-ax.set_title('Staircase count per profile  |  bottom strip = presence (green) / absence (red)', loc='left')
+ax.set_title(f"{title_datetime_str}\nStaircase count per profile  |  bottom strip = presence (green) / absence (red)", loc='left')
 ax.set_ylim(-0.5)
 add_station_markers(ax, fig)
+plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_counts', f'ru29_counts_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
 
@@ -726,11 +765,16 @@ ax.invert_yaxis()
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('Pressure (dbar)')
 ax.set_xlabel('Distance along track (km)')
-ax.set_title('Staircase depth range per profile  |  bar = min-max, markers = shallowest / median / deepest', loc='left')
+ax.set_title(f"{title_datetime_str}\nStaircase depth range per profile  |  bar = min-max, markers = shallowest / median / deepest", loc='left')
 add_station_markers(ax, fig, extra_handles=depth_legend)
+plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_depth_range', f'ru29_depth_range_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
 
 
-shutil.copytree(FIG_BASE_DIR, WEB_FOLDER, dirs_exist_ok=True)
-print(f'Copied {FIG_BASE_DIR} to {WEB_FOLDER}')
+# Copy entire figure tree to web folder (skipped when WEB_FOLDER is unset, e.g. test runs)
+if WEB_FOLDER:
+    shutil.copytree(FIG_BASE_DIR, WEB_FOLDER, dirs_exist_ok=True)
+    print(f'Copied {FIG_BASE_DIR} to {WEB_FOLDER}')
+else:
+    print(f'WEB_FOLDER not set - figures left in {FIG_BASE_DIR}')
