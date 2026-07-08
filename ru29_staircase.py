@@ -103,18 +103,22 @@ gdf=gdf.set_index('time')
 print('RU29 data retrieved')
 
 
-# SA_from_SP/CT_from_t are purely row-wise (each row's own salinity/pressure/
-# lon/lat) - no per-profile aggregation needed, so this runs vectorized over
-# the whole frame instead of groupby('profile_id').apply(...), which avoids the
-# include_groups/group_keys churn across pandas versions entirely (newer pandas
-# excludes the grouping column from apply() by default, and even removed the
-# include_groups=True escape hatch that used to restore the old behavior).
-gdf['absolute_salinity'] = gsw.SA_from_SP(
-    gdf['salinity'], gdf['pressure'], gdf['lon'], gdf['lat']
-)
-gdf['conservative_temperature'] = gsw.CT_from_t(
-    gdf['absolute_salinity'], gdf['temperature'], gdf['pressure']
-)
+def convert_per_profile(group):
+    group = group.copy()
+    group['absolute_salinity'] = gsw.SA_from_SP(
+        group.salinity, group.pressure, group.lon, group.lat
+    )
+    group['conservative_temperature'] = gsw.CT_from_t(
+        group.absolute_salinity, group.temperature, group.pressure
+    )
+    return group
+
+# NOTE: pandas >=3.0 silently drops the grouping column (profile_id) from what
+# gets passed into/returned by the applied function (the old include_groups=True
+# behavior was removed, not just deprecated - there's no flag left to restore
+# it). Selecting gdf.columns explicitly before .apply() keeps profile_id in
+# scope on both pandas 2.2.x and 3.0.x, so this is safe across the version bump.
+gdf = gdf.groupby('profile_id', group_keys=False)[gdf.columns].apply(convert_per_profile)
 
 # --- 1. SORT ONCE ---
 print("Sorting data globally...")
