@@ -1,0 +1,6 @@
+*
+!*.py
+!.gitignore
+!environment.yml
+!config.py.example
+config.py

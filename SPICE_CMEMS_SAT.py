@@ -1,0 +1,248 @@
+import xarray as xr
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+import cmocean.cm as cmo
+import dask
+import os
+import glob
+import shutil
+
+from config import WEB_FOLDER
+
+CMEMS_BASE_DIR = "./cmems_data"
+
+# Shared bounding box for every map: [lon_min, lon_max, lat_min, lat_max]
+TROP_WTRN_ATL_EXTENT = [-63, -40.75, 4, 19]
+
+# product -> variables to plot (matches the folder names cmems_download.py writes into)
+PRODUCT_PLOT_VARS = {
+    "aviso_ssh": ["sla"],
+    "sst": ["analysed_sst"],
+    "ocean_color": ["CHL"],
+    "sss": ["sos", "dos"],
+}
+
+
+def load_latest(product_name, base_dir=CMEMS_BASE_DIR):
+    """Open the most recently downloaded NetCDF for a product. cmems_download.py
+    is what actually fetches the data - this just reads back what it wrote."""
+    files = sorted(glob.glob(os.path.join(base_dir, product_name, "*.nc")), key=os.path.getmtime)
+    return xr.open_dataset(files[-1])
+
+
+daily_data = {
+    product_name: load_latest(product_name) for product_name in PRODUCT_PLOT_VARS
+}
+
+
+def percentile(da, min=2, max=98):
+    vmin = np.floor(np.nanpercentile(da, min))
+    vmax = np.ceil(np.nanpercentile(da, max))
+    return vmin, vmax
+
+
+def _kelvin_to_celsius(da):
+    da = da - 273.15
+    da.attrs["units"] = "degC"
+    return da
+
+
+# colormap per variable, reused regardless of which product it came from
+variable_cmaps = {
+    "sla": cmo.balance,
+    "adt": cmo.balance,
+    "analysed_sst": cmo.thermal,
+    "CHL": cmo.algae,
+    "sos": cmo.haline,
+    "dos": cmo.dense,
+}
+
+# display units per variable, after any conversion in variable_transforms below
+variable_units = {
+    "sla": "m",
+    "adt": "m",
+    "analysed_sst": "°C",
+    "CHL": "mg m$^{-3}$",
+    "sos": "psu",
+    "dos": "kg m$^{-3}$",
+}
+
+# applied to the data right before plotting (e.g. analysed_sst arrives in Kelvin)
+variable_transforms = {
+    "analysed_sst": _kelvin_to_celsius,
+}
+
+# static cbar limits per variable, for day-to-day comparability
+variable_clims = {
+    'sla': (-0.2, 0.2),
+    'analysed_sst': (25.0, 29.0),
+    'CHL': (0.0, 7.0),
+    'sos': (30.0, 37.0),
+    'dos': (1018.0, 1025.0),
+}
+
+# contour line levels per variable - only drawn for variables listed here
+variable_contour_levels = {
+    'sla': np.arange(-0.2, 0.21, 0.1),
+    'analysed_sst': np.arange(25.0, 29.1, 1.0),
+    'sos': np.arange(30.0, 37.1, 0.5),
+    'dos': np.arange(1018.0, 1025.1, 0.5),
+}
+
+FIG_BASE_DIR = "./satellite_figs"
+
+# Platforms to overlay on every map: track CSV (time, lat, lon columns,
+# written by that platform's own fetch script) + legend marker style for its
+# latest position. Tails are always white; only the latest-position marker
+# varies so platforms stay distinguishable as more get added (e.g. more
+# gliders alongside ru29 and Falkor (too) later in the cruise).
+PLATFORMS = [
+    {"name": "ru29", "csv": "ru29_latest_track.csv", "marker": "*", "color": "gold", "markersize": 10, "enabled": True},
+    # off until the official cruise starts - flip to True to bring Falkor back
+    {"name": "Falkor (too)", "csv": "falkor_track.csv", "marker": "^", "color": "magenta", "markersize": 8, "enabled": False},
+]
+ACTIVE_PLATFORMS = [p for p in PLATFORMS if p.get("enabled", True)]
+
+
+def get_platform_track(csv_name, days_back=7):
+    """Read last days_back days of a platform's positions from a CSV (time, lat, lon columns)."""
+    try:
+        csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), csv_name)
+        df = pd.read_csv(csv_path)
+        df["time"] = pd.to_datetime(df["time"])
+        cutoff = pd.Timestamp.now(tz='UTC') - pd.Timedelta(days=days_back)
+        return df[df["time"] >= cutoff].sort_values("time").reset_index(drop=True)
+    except Exception as e:
+        print(f"Warning: could not load track from {csv_name}: {e}")
+        return None
+
+
+def plot_and_save_variable(ds, var, bbox=TROP_WTRN_ATL_EXTENT, base_dir=FIG_BASE_DIR, platform_tracks=None, run_ts=""):
+    """Save one standalone map per day present in ds. Returns the list of paths saved."""
+    lon_min, lon_max, lat_min, lat_max = bbox
+    paths = []
+    platform_tracks = platform_tracks or {}
+
+    for t in np.atleast_1d(ds.time.values):
+        date = pd.Timestamp(t)
+        data = ds[var].sel(time=t)
+        if "depth" in data.dims:
+            data = data.isel(depth=0)
+        if var in variable_transforms:
+            data = variable_transforms[var](data)
+        vmin, vmax = variable_clims.get(var, (None, None))
+        if vmin is None:
+            vmin, vmax = percentile(data)
+
+        fig, ax = plt.subplots(figsize=(8, 6), subplot_kw={"projection": ccrs.Mercator()})
+        ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
+
+        # Natural Earth features - avoids GSHHS download (404s on old cartopy URLs)
+        ax.add_feature(cfeature.NaturalEarthFeature(
+            'physical', 'land', '10m',
+            edgecolor='black', facecolor='lightgray'
+        ))
+        ax.add_feature(cfeature.COASTLINE.with_scale('10m'), linewidth=0.8)
+        ax.add_feature(cfeature.BORDERS, linewidth=0.5)
+
+        # Gridlines with labels
+        gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+        gl.top_labels = False
+        gl.right_labels = False
+
+        im = ax.pcolormesh(
+            ds.longitude.values, ds.latitude.values, data.values,
+            cmap=variable_cmaps.get(var, "viridis"),
+            vmin=vmin, vmax=vmax,
+            transform=ccrs.PlateCarree(),
+        )
+
+        levels = variable_contour_levels.get(var)
+        if levels is not None:
+            cs = ax.contour(
+                ds.longitude.values, ds.latitude.values, data.values,
+                levels=levels, colors='k', linewidths=0.5,
+                transform=ccrs.PlateCarree(),
+            )
+            ax.clabel(cs, inline=True, fontsize=6, fmt='%.1f')
+
+        # Platform overlays: white tail up to figure date/time + a marker
+        # (shape/color set per platform) at the latest position. Each
+        # platform's latest fix feeds a legend entry in the upper right.
+        legend_handles = []
+        legend_labels = []
+        for platform in ACTIVE_PLATFORMS:
+            track = platform_tracks.get(platform["name"])
+            if track is None or len(track) == 0:
+                continue
+            try:
+                h, m = int(run_ts[:2]), int(run_ts[2:]) if len(run_ts) >= 4 else (0, 0)
+            except (ValueError, TypeError):
+                h, m = 0, 0
+            cutoff = pd.Timestamp(date.date()) + pd.Timedelta(hours=h, minutes=m)
+            _times = track['time']
+            if _times.dt.tz is not None:
+                cutoff = cutoff.tz_localize('UTC')
+            plot_track = track[_times <= cutoff]
+            if len(plot_track) == 0:
+                continue
+
+            try:
+                lons = plot_track['lon'].values.astype(float)
+                lats = plot_track['lat'].values.astype(float)
+                print(f"  {platform['name']} overlay: {len(lons)} pts, lat=[{lats[0]:.2f},{lats[-1]:.2f}], lon=[{lons[0]:.2f},{lons[-1]:.2f}]")
+                ax.plot(lons, lats, '-', color='white', lw=2.0,
+                        transform=ccrs.PlateCarree(), zorder=50)
+                marker, = ax.plot(lons[-1], lats[-1], platform["marker"], color=platform["color"],
+                                   markersize=platform.get("markersize", 8),
+                                   markeredgecolor='k', markeredgewidth=0.8,
+                                   transform=ccrs.PlateCarree(), zorder=51)
+                _t = plot_track['time'].iloc[-1]
+                t_str = _t.strftime('%Y-%m-%d %H:%M') if hasattr(_t, 'strftime') else str(_t)[:16]
+                legend_handles.append(marker)
+                legend_labels.append(f"{platform['name']}\n{t_str} UTC")
+            except Exception as _e:
+                print(f"  ERROR in {platform['name']} overlay: {_e}")
+
+        if legend_handles:
+            ax.legend(legend_handles, legend_labels, loc='upper right', fontsize=6,
+                      framealpha=0.85, handletextpad=0.6, borderpad=0.6)
+
+        unit = variable_units.get(var, "")
+        cbar_label = f"{var} ({unit})" if unit else var
+        fig.colorbar(im, ax=ax, orientation="horizontal", label=cbar_label, shrink=0.8, pad=0.08)
+        ax.set_title(f"{var} {date:%Y-%m-%d}")
+
+        out_dir = os.path.join(base_dir, f"{date:%Y}", f"{date:%m}", f"{date:%d}", var)
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, f"{var}_{date:%Y%m%d}_{run_ts}.png")
+        fig.savefig(out_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+        paths.append(out_path)
+
+    return paths
+
+
+# Fetch every platform's track once to overlay on all figures
+run_ts = os.environ.get("RUN_TS", pd.Timestamp.now().strftime("%H%M"))
+platform_tracks = {}
+for platform in ACTIVE_PLATFORMS:
+    track = get_platform_track(platform["csv"])
+    platform_tracks[platform["name"]] = track
+    print(f"{platform['name']} track: {len(track)} positions" if track is not None else f"{platform['name']} track: not available (check log above)")
+
+# standalone plot per variable per day, saved to satellite_figs/yyyy/mm/dd/variable/
+saved_paths = []
+for product_name, plot_vars in PRODUCT_PLOT_VARS.items():
+    ds = daily_data[product_name]
+    for var in plot_vars:
+        saved_paths.extend(plot_and_save_variable(ds, var, platform_tracks=platform_tracks, run_ts=run_ts))
+
+print("Saved figures:", saved_paths)
+
+# Copy entire figure tree to web folder
+shutil.copytree(FIG_BASE_DIR, WEB_FOLDER, dirs_exist_ok=True)
+print(f'Copied {FIG_BASE_DIR} to {WEB_FOLDER}')
