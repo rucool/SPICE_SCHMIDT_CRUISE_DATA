@@ -16,8 +16,8 @@ This repo holds the core Python logic only. Cron wrappers, absolute deployment p
 
 **1. Environment**
 ```bash
-conda env create -f environment.yml -n ncom_kmz
-conda activate ncom_kmz
+conda env create -f environment.yml -n spice_data
+conda activate spice_data
 ```
 
 **2. Local configuration**
