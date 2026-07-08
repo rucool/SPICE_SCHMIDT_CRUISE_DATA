@@ -3,4 +3,5 @@
 !.gitignore
 !environment.yml
 !config.py.example
+!README.md
 config.py

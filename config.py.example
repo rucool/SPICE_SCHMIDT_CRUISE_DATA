@@ -1,0 +1,5 @@
+# Copy this file to config.py and fill in your own values.
+# config.py is gitignored and never committed - keeps server-specific paths
+# out of the scripts that get pushed to GitHub.
+
+WEB_FOLDER = "/path/to/your/public_html"
