@@ -228,4 +228,4 @@ dependencies:
     - typing-inspection==0.4.1
     - websockets==16.0
     - zarr==2.18.3
-prefix: /home/jme167/miniconda3/envs/spice_data
+
