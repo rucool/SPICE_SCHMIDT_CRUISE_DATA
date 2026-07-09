@@ -404,9 +404,12 @@ from matplotlib.lines import Line2D
 from scipy.spatial.distance import cdist as scipy_cdist
 
 run_time = dt.datetime.utcnow()
-run_ts = run_time.strftime("%Y%m%d_") + os.environ.get("RUN_TS", "") + "00" if os.environ.get("RUN_TS") else run_time.strftime("%Y%m%d_%H%M%S")
 FIG_BASE_DIR = "./satellite_figs"
 _plot_date = pd.Timestamp(_target) if _target else run_time
+# Filename date stamp must track _plot_date (the day being backfilled), not
+# run_time (today) - otherwise every backfilled day's files get stamped with
+# today's date instead of the day they belong to.
+run_ts = _plot_date.strftime("%Y%m%d_") + os.environ.get("RUN_TS", "") + "00" if os.environ.get("RUN_TS") else run_time.strftime("%Y%m%d_%H%M%S")
 daily_dir = os.path.join(FIG_BASE_DIR, _plot_date.strftime("%Y"), _plot_date.strftime("%m"), _plot_date.strftime("%d"))
 
 # Datetime shown above every plot title below: the backfill cutoff (target
