@@ -1,7 +1,9 @@
-*
-!*.py
-!.gitignore
-!environment.yml
-!config.py.example
-!README.md
+*.xml
+*.pyc
+*.iml
+*.DS_Store
+*.idea
+*build/lib
+*.egg-info
+*.vscode
 config.py

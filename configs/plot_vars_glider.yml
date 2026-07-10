@@ -1,0 +1,61 @@
+# Configuration file to set default color maps for plotting variables
+conductivity:
+  cmap: jet
+  title: Conductivity
+  min:
+  max:
+temperature:
+  cmap: cmo.thermal
+  title: Temperature
+  min:
+  max:
+salinity:
+  cmap: cmo.haline
+  title: Salinity
+  min:
+  max:
+density:
+  cmap: cmo.dense
+  title: Density
+  min:
+  max:
+chlorophyll_a:
+  cmap: cmo.algae
+  title: Chlorophyll-a
+  min:
+  max:
+beta_700nm:
+  cmap: cmo.thermal
+  title: Backscatter 700nm
+  min:
+  max:
+cdom:
+  cmap: cmo.thermal
+  title: CDOM
+  min:
+  max:
+oxygen_concentration:
+  cmap: cmo.deep
+  title: Oxygen Concentration
+  min:
+  max:
+oxygen_concentration_shifted:
+  cmap: cmo.deep
+  title: Oxygen Concentration Shifted
+  min:
+  max:
+oxygen_concentration_shifted_mgL:
+  cmap: cmo.deep
+  title: Oxygen Concentration Shifted mg/L
+  min:
+  max:
+oxygen_saturation:
+  cmap: cmo.deep
+  title: Oxygen Saturation
+  min:
+  max:
+oxygen_saturation_shifted:
+  cmap: cmo.deep
+  title: Oxygen Saturation Shifted
+  min:
+  max:
