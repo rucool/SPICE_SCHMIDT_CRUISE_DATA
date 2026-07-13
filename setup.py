@@ -1,9 +1,8 @@
 from setuptools import setup, find_packages
-from dataset_archiving import __version__
 
 setup(
     name='SPICE_SCHMIDT_CRUISE_DATA',
-    version=__version__,
+    version='0.1.0',
     packages=find_packages(),
     url='https://github.com/rucool/SPICE_SCHMIDT_CRUISE_DATA',
     author='Julia Engdahl, Lori Garzio',
