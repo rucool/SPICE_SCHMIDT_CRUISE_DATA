@@ -11,6 +11,10 @@ This repo holds the satellite and platform-tracking figure pipeline supporting t
 - **`cmems_sla_adt.py`** — generates a KMZ (SSH/SLA) for viewing in Google Earth.
 - **`ru29_staircase.py`** — pulls ru29 glider profiles from the Rutgers glider ERDDAP, detects thermohaline staircases, and writes both the staircase figures and the glider's position track (`ru29_latest_track.csv`) that `SPICE_CMEMS_SAT.py` overlays.
 - **`get_falkor_position.py`** — fetches R/V Falkor (too)'s position from FSU/COAPS SAMOS (public THREDDS/OPeNDAP feed, no API key required) and writes a rolling track (`falkor_track.csv`).
+- **`plot_glider_xsection_rt.py`** — pulls a real-time glider deployment from ERDDAP and plots time/depth cross-sections (scatter, colored by variable) for each variable in the config, for the synoptic record or the last 24/48 hours.
+- **`plot_glider_profiles_rt.py`** — same real-time glider data source, plotted instead as depth profiles colored by profile time, for the synoptic record or the last 24/48 hours.
+
+Both glider plotting scripts take a `deployment` ID (e.g. `ru29-20260623T2102-profile-sci-rt`), read per-variable colormap/title/axis-limit settings from `configs/plot_vars_glider.yml` (or a deployment-specific override `configs/plot_vars_glider_<deployment>.yml`), and share fetch/plot helpers in `functions/common.py` and `functions/plotting.py`.
 
 ## Setup
 
