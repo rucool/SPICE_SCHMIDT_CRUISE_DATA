@@ -19,5 +19,10 @@ def get_erddap_dataset(server, ds_id, variables=None, constraints=None):
     if variables:
         e.variables = variables
     
-    ds = e.to_xarray(requests_kwargs={"timeout": 600})  # increase timeout to 10 minutes
+    try:
+        ds = e.to_xarray(requests_kwargs={"timeout": 60})  # timeout 60 seconds
+    except Exception as err:
+        print(f'Error downloading dataset {ds_id} from ERDDAP server {server}: {err}')
+        ds = None
+    
     return ds
