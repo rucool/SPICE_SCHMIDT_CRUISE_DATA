@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+import argparse
 import os
 import pandas as pd
 import xarray as xr
@@ -7,7 +9,16 @@ import copernicusmarine
 # Shared bounding box for every figure/kmz script: [lon_min, lon_max, lat_min, lat_max]
 TROP_WTRN_ATL_EXTENT = [-63, -40.75, 4, 19]
 
-CMEMS_BASE_DIR = "./cmems_data"
+arg_parser = argparse.ArgumentParser(description='Fetch shared Copernicus Marine satellite data',
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+arg_parser.add_argument('-s', '--save_dir',
+                        dest='save_dir',
+                        type=str,
+                        default='./cmems_data',
+                        help='Full file path to base directory for downloaded CMEMS data')
+args = arg_parser.parse_args()
+
+CMEMS_BASE_DIR = args.save_dir
 
 # product registry: everything pulled via Copernicus Marine now.
 # AOML's AVISO SSH mirror died 2026-01-22, and NOAA CoastWatch (sst/ocean_color/ssh

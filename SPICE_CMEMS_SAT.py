@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+import argparse
 import xarray as xr
 import numpy as np
 import pandas as pd
@@ -8,11 +10,18 @@ import cmocean.cm as cmo
 import dask
 import os
 import glob
-import shutil
 
-from config import WEB_FOLDER
 
-CMEMS_BASE_DIR = "./cmems_data"
+arg_parser = argparse.ArgumentParser(description='Create CMEMS SSH SST CHL maps',
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+arg_parser.add_argument('-s', '--save_dir',
+                        dest='save_dir',
+                        type=str,
+                        default='.',
+                        help='Full file path to base output directory (figures written to save_dir/satellite_figs, data read from save_dir/cmems_data)')
+args = arg_parser.parse_args()
+
+CMEMS_BASE_DIR = os.path.join(args.save_dir, 'cmems_data')
 
 # Shared bounding box for every map: [lon_min, lon_max, lat_min, lat_max]
 TROP_WTRN_ATL_EXTENT = [-63, -40.75, 4, 19]
@@ -92,7 +101,7 @@ variable_contour_levels = {
     'dos': np.arange(1018.0, 1025.1, 0.5),
 }
 
-FIG_BASE_DIR = "./satellite_figs"
+FIG_BASE_DIR = os.path.join(args.save_dir, 'satellite_figs')
 
 # Platforms to overlay on every map: track CSV (time, lat, lon columns,
 # written by that platform's own fetch script) + legend marker style for its
@@ -254,10 +263,3 @@ for product_name, plot_vars in PRODUCT_PLOT_VARS.items():
         saved_paths.extend(plot_and_save_variable(ds, var, platform_tracks=platform_tracks, run_ts=run_ts))
 
 print("Saved figures:", saved_paths)
-
-# Copy entire figure tree to web folder (skipped when WEB_FOLDER is unset, e.g. test runs)
-if WEB_FOLDER:
-    shutil.copytree(FIG_BASE_DIR, WEB_FOLDER, dirs_exist_ok=True)
-    print(f'Copied {FIG_BASE_DIR} to {WEB_FOLDER}')
-else:
-    print(f'WEB_FOLDER not set - figures left in {FIG_BASE_DIR}')

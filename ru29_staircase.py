@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -22,9 +24,7 @@ from thermohalinesteps.detect_staircases import classify_staircase, identify_sta
 from tqdm import tqdm
 # import geopandas as gpd
 import warnings
-import shutil
 
-from config import WEB_FOLDER
 
 # MONKEY PATCH (Crucial for legacy append support) ---
 if not hasattr(pd.DataFrame, 'append'):
@@ -36,6 +36,16 @@ if not hasattr(pd.DataFrame, 'append'):
         return pd.concat([self, other], ignore_index=ignore_index, 
                          verify_integrity=verify_integrity, sort=sort)
     pd.DataFrame.append = _append
+
+
+arg_parser = argparse.ArgumentParser(description='Detect thermohaline staircases in ru29 glider profiles and save hovmoller figures',
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+arg_parser.add_argument('-s', '--save_dir',
+                        dest='save_dir',
+                        type=str,
+                        default='./satellite_figs',
+                        help='Full file path to save directory for figures')
+args = arg_parser.parse_args()
 
 
 def get_erddap_dataset(ds_id, server, variables=None, constraints=None, filetype=None):
@@ -404,7 +414,7 @@ from matplotlib.lines import Line2D
 from scipy.spatial.distance import cdist as scipy_cdist
 
 run_time = dt.datetime.utcnow()
-FIG_BASE_DIR = "./satellite_figs"
+FIG_BASE_DIR = args.save_dir
 _plot_date = pd.Timestamp(_target) if _target else run_time
 # Filename date stamp must track _plot_date (the day being backfilled), not
 # run_time (today) - otherwise every backfilled day's files get stamped with
@@ -778,10 +788,3 @@ plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_depth_range', f'ru29_depth_range_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
 
-
-# Copy entire figure tree to web folder (skipped when WEB_FOLDER is unset, e.g. test runs)
-if WEB_FOLDER:
-    shutil.copytree(FIG_BASE_DIR, WEB_FOLDER, dirs_exist_ok=True)
-    print(f'Copied {FIG_BASE_DIR} to {WEB_FOLDER}')
-else:
-    print(f'WEB_FOLDER not set - figures left in {FIG_BASE_DIR}')

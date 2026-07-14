@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+import argparse
 import simplekml
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,11 +13,18 @@ from pathlib import Path
 import os
 from datetime import date, timedelta
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-import shutil
 
-from config import WEB_FOLDER
 
-CMEMS_BASE_DIR = "./cmems_data"
+arg_parser = argparse.ArgumentParser(description='Create CMEMS SLA/ADT kmz imagery',
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+arg_parser.add_argument('-s', '--save_dir',
+                        dest='save_dir',
+                        type=str,
+                        default=os.path.dirname(os.path.abspath(__file__)),
+                        help='Full file path to base output directory (dated cmems_YYYY_MM_DD folders written here, data read from save_dir/cmems_data)')
+args = arg_parser.parse_args()
+
+CMEMS_BASE_DIR = os.path.join(args.save_dir, 'cmems_data')
 
 # Shared bounding box for every map: [lon_min, lon_max, lat_min, lat_max]
 TROP_WTRN_ATL_EXTENT = [-63, -40.75, 4, 19]
@@ -62,12 +71,10 @@ def lon360to180(array):
 
 
 
-# Get absolute path to the folder where this script lives
-script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Create main folder with today's date inside the script's directory
 today = date.today()
-base_folder = os.path.join(script_dir, today.strftime("cmems_%Y_%m_%d"))
+base_folder = os.path.join(args.save_dir, today.strftime("cmems_%Y_%m_%d"))
 os.makedirs(base_folder, exist_ok=True)
 
 # Create subfolders for 'sla' and 'kmz'
@@ -151,15 +158,3 @@ for var_name in var_list:
     model_name = f"CMEMS_{var_name}"
     kml.savekmz(f"{base_folder}/kmz/{model_name}.kmz")
 
-
-
-
-
-
-os.chdir(f'{base_folder}/kmz')
-
-kfiles = sorted(glob.glob('*.kmz'))
-
-for kk in kfiles:
-    shutil.copy(kk,WEB_FOLDER)
-    print('copied', kk)
