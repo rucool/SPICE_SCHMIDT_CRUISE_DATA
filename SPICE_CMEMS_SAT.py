@@ -17,11 +17,16 @@ arg_parser = argparse.ArgumentParser(description='Create CMEMS SSH SST CHL maps'
 arg_parser.add_argument('-s', '--save_dir',
                         dest='save_dir',
                         type=str,
-                        default='.',
-                        help='Full file path to base output directory (figures written to save_dir/satellite_figs, data read from save_dir/cmems_data)')
+                        default='./satellite_figs',
+                        help='Full file path to directory where figures are written')
+arg_parser.add_argument('-c', '--cmems_dir',
+                        dest='cmems_dir',
+                        type=str,
+                        default='./cmems_data',
+                        help='Full file path to directory where downloaded CMEMS data is read from')
 args = arg_parser.parse_args()
 
-CMEMS_BASE_DIR = os.path.join(args.save_dir, 'cmems_data')
+CMEMS_BASE_DIR = args.cmems_dir
 
 # Shared bounding box for every map: [lon_min, lon_max, lat_min, lat_max]
 TROP_WTRN_ATL_EXTENT = [-63, -40.75, 4, 19]
@@ -101,7 +106,7 @@ variable_contour_levels = {
     'dos': np.arange(1018.0, 1025.1, 0.5),
 }
 
-FIG_BASE_DIR = os.path.join(args.save_dir, 'satellite_figs')
+FIG_BASE_DIR = args.save_dir
 
 # Platforms to overlay on every map: track CSV (time, lat, lon columns,
 # written by that platform's own fetch script) + legend marker style for its
