@@ -2,7 +2,7 @@
 
 """
 Author: Lori Garzio on 7/10/2026
-Last modified: 7/10/2026
+Last modified: 7/14/2026
 Plot profiles of real-time glider data, colored by time.
 The full timeseries, last 24 hours, and last 48 hours
 can be plotted. The default is to plot the full timeseries.
@@ -30,6 +30,9 @@ def main(args):
     save_dir = args.save_dir
 
     ds = cf.get_erddap_dataset(server, dsid)
+    if ds is None:
+        print(f'No dataset returned for {dsid}')
+        sys.exit(1)
     ds = ds.drop_dims(['trajectory', 'profile'])
     ds = ds.swap_dims({'obs': 'profile_time'})
     ds = ds.assign_coords(depth_interpolated=ds.depth_interpolated)
