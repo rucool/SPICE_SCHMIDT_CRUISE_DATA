@@ -422,12 +422,16 @@ _plot_date = pd.Timestamp(_target) if _target else run_time
 run_ts = _plot_date.strftime("%Y%m%d_") + os.environ.get("RUN_TS", "") + "00" if os.environ.get("RUN_TS") else run_time.strftime("%Y%m%d_%H%M%S")
 daily_dir = os.path.join(FIG_BASE_DIR, _plot_date.strftime("%Y"), _plot_date.strftime("%m"), _plot_date.strftime("%d"))
 
-# Datetime shown above every plot title below: the backfill cutoff (target
-# date + RUN_TS) when backfilling, otherwise the actual run time.
-if _target:
-    _title_h = int(os.environ.get("RUN_TS", "0000")[:2])
-    _title_m = int(os.environ.get("RUN_TS", "0000")[2:])
-    _title_dt = pd.Timestamp(_target, tz="UTC") + pd.Timedelta(hours=_title_h, minutes=_title_m)
+# Datetime shown above every plot title below: always the rounded RUN_TS
+# boundary (backfill cutoff date + RUN_TS, or today's date + RUN_TS when
+# live) rather than the actual wall-clock time this line executes at - the
+# ERDDAP fetch + staircase detection above can take a couple minutes, so
+# using raw run_time here made titles drift past the top of the hour under
+# load instead of matching the RUN_TS-rounded filename.
+if os.environ.get("RUN_TS"):
+    _title_h, _title_m = int(os.environ.get("RUN_TS")[:2]), int(os.environ.get("RUN_TS")[2:])
+    _title_base_date = pd.Timestamp(_target, tz="UTC") if _target else pd.Timestamp(run_time, tz="UTC").normalize()
+    _title_dt = _title_base_date + pd.Timedelta(hours=_title_h, minutes=_title_m)
 else:
     _title_dt = pd.Timestamp(run_time, tz="UTC")
 title_datetime_str = _title_dt.strftime("%Y-%m-%d %H:%M") + " UTC"
