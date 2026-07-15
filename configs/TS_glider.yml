@@ -1,0 +1,13 @@
+# Configuration file to set x and y lims for TS diagrams
+salinity:
+  title: Salinity
+  min:
+  max:
+temperature:
+  title: Temperature
+  min:
+  max:
+depth:
+  title: Depth
+  min:
+  max:
