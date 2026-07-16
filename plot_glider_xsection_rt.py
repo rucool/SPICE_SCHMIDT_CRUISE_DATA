@@ -34,6 +34,7 @@ def main(args):
     ds = ds.drop_dims(['trajectory', 'profile'])
     ds = ds.swap_dims({'obs': 'time'})
     ds = ds.sortby(ds.time)
+    ds = cf.add_teos10_variables(ds)
     
     deploy = ds.attrs['deployment']
     glider = ds.platform.attrs['id']

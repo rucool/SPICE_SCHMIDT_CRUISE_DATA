@@ -37,6 +37,7 @@ def main(args):
     ds = ds.swap_dims({'obs': 'profile_time'})
     ds = ds.assign_coords(depth_interpolated=ds.depth_interpolated)
     ds = ds.sortby(ds.profile_time)
+    ds = cf.add_teos10_variables(ds)
     
     deploy = ds.attrs['deployment']
     glider = ds.platform.attrs['id']

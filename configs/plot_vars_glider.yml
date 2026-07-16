@@ -4,19 +4,19 @@ conductivity:
   title: Conductivity
   min:
   max:
-temperature:
+conservative_temperature:
   cmap: cmo.thermal
-  title: Temperature
+  title: Conservative Temperature
   min:
   max:
-salinity:
+absolute_salinity:
   cmap: cmo.haline
-  title: Salinity
+  title: Absolute Salinity
   min:
   max:
-density:
+potential_density:
   cmap: cmo.dense
-  title: Density
+  title: Potential Density
   min:
   max:
 chlorophyll_a:

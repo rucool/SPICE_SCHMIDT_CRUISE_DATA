@@ -35,6 +35,7 @@ def main(args):
     ds = ds.drop_dims(['trajectory', 'profile'])
     ds = ds.swap_dims({'obs': 'profile_time'})
     ds = ds.sortby(ds.profile_time)
+    ds = cf.add_teos10_variables(ds)
     
     deploy = ds.attrs['deployment']
     glider = ds.platform.attrs['id']
@@ -69,15 +70,15 @@ def main(args):
         config_file = yaml.safe_load(f)
 
     try:
-        sal = ds.salinity
+        sal = ds.absolute_salinity
     except KeyError:
-        print(f'Salinity not found in dataset: {dsid}')
+        print(f'Absolute salinity not found in dataset: {dsid}')
         sys.exit(1)
     
     try:
-        temp = ds.temperature
+        temp = ds.conservative_temperature
     except KeyError:
-        print(f'Temperature not found in dataset: {dsid}')
+        print(f'Conservative temperature not found in dataset: {dsid}')
         sys.exit(1)
 
     try:
@@ -105,23 +106,23 @@ def main(args):
     
     # limit the x-axis
     xmin, xmax = ax.get_xlim()
-    if config_file['salinity']['min'] is not None:
-        xmin = config_file['salinity']['min']
-    if config_file['salinity']['max'] is not None:
-        xmax = config_file['salinity']['max']
+    if config_file['absolute_salinity']['min'] is not None:
+        xmin = config_file['absolute_salinity']['min']
+    if config_file['absolute_salinity']['max'] is not None:
+        xmax = config_file['absolute_salinity']['max']
     ax.set_xlim(xmin, xmax)
 
     # limit the y-axis
     ymin, ymax = ax.get_ylim()
-    if config_file['temperature']['min'] is not None:
-        ymin = config_file['temperature']['min']
-    if config_file['temperature']['max'] is not None:
-        ymax = config_file['temperature']['max']
+    if config_file['conservative_temperature']['min'] is not None:
+        ymin = config_file['conservative_temperature']['min']
+    if config_file['conservative_temperature']['max'] is not None:
+        ymax = config_file['conservative_temperature']['max']
     ax.set_ylim(ymin, ymax)
 
     # format labels
-    ax.set_ylabel(f'{config_file["temperature"]["title"]} ({temp.attrs["units"]})')
-    ax.set_xlabel(f'{config_file["salinity"]["title"]} ({sal.attrs["units"]})')
+    ax.set_ylabel(f'{config_file["conservative_temperature"]["title"]} ({temp.attrs["units"]})')
+    ax.set_xlabel(f'{config_file["absolute_salinity"]["title"]} ({sal.attrs["units"]})')
     ax.ticklabel_format(useOffset=False)  # don't use scientific notation for ticks
     ttl = f'{glider} T-S diagram\n{t0title} to {t1title}'
     ax.set_title(ttl, fontsize=14)
