@@ -70,15 +70,15 @@ def main(args):
         config_file = yaml.safe_load(f)
 
     try:
-        sal = ds.salinity
+        sal = ds.absolute_salinity
     except KeyError:
-        print(f'Salinity not found in dataset: {dsid}')
+        print(f'Absolute salinity not found in dataset: {dsid}')
         sys.exit(1)
     
     try:
-        temp = ds.temperature
+        temp = ds.conservative_temperature
     except KeyError:
-        print(f'Temperature not found in dataset: {dsid}')
+        print(f'Conservative temperature not found in dataset: {dsid}')
         sys.exit(1)
 
     try:

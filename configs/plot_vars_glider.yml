@@ -5,16 +5,19 @@ conductivity:
   min:
   max:
 temperature:
+  variable: conservative_temperature
   cmap: cmo.thermal
   title: Conservative Temperature
   min:
   max:
 salinity:
+  variable: absolute_salinity
   cmap: cmo.haline
   title: Absolute Salinity
   min:
   max:
 density:
+  variable: potential_density
   cmap: cmo.dense
   title: Potential Density
   min:

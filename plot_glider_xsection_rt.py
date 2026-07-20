@@ -70,7 +70,7 @@ def main(args):
 
     for pv, info in plt_vars.items():
         try:
-            variable = ds[pv]
+            variable = ds[info.get('variable', pv)]
         except KeyError:
             continue
 
