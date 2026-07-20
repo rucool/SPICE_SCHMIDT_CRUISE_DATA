@@ -253,7 +253,7 @@ def plot_and_save_variable(ds, var, bbox=TROP_WTRN_ATL_EXTENT, base_dir=FIG_BASE
 
 
 # Fetch every platform's track once to overlay on all figures
-run_ts = os.environ.get("RUN_TS", pd.Timestamp.now().strftime("%H%M"))
+run_ts = os.environ.get("RUN_TS", pd.Timestamp.now(tz="UTC").strftime("%H%M"))
 platform_tracks = {}
 for platform in ACTIVE_PLATFORMS:
     track = get_platform_track(platform["csv"])

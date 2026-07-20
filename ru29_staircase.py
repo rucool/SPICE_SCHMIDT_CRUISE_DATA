@@ -562,9 +562,9 @@ fig.subplots_adjust(bottom=0.22)
 
 if not ml.empty:
     sc = ax.scatter(ml['dist_km'], ml['p'], c=ml['layer_height'],
-                    cmap=cmo.matter, s=35, zorder=2, vmin=0,
+                    cmap=cmo.matter, s=35, zorder=2, vmin=0, vmax=40,
                     edgecolors='k', linewidths=0.3)
-    cb = plt.colorbar(sc, ax=ax, pad=0.01)
+    cb = plt.colorbar(sc, ax=ax, pad=0.01, extend='max')
     cb.set_label('Layer height (dbar)')
 ax.invert_yaxis()
 ax.grid(True, **GRID_KW)
