@@ -1,0 +1,9 @@
+# Tunable numeric limits for ru29_staircase.py figures. Edit values here to
+# adjust colorbar ranges / thresholds without touching the python code.
+ml_height:
+  vmin: 0
+  vmax: 25
+turner:
+  vmin: -90
+  vmax: 90
+station_reach_km: 50.0

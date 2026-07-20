@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import yaml
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -46,6 +47,13 @@ arg_parser.add_argument('-s', '--save_dir',
                         default='./satellite_figs',
                         help='Full file path to save directory for figures')
 args = arg_parser.parse_args()
+
+# Tunable numeric limits (colorbar ranges, station reach) live in this
+# config file so they can be adjusted without editing python - see
+# configs/ru29_staircase_vars.yml.
+_configdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs')
+with open(os.path.join(_configdir, 'ru29_staircase_vars.yml')) as _f:
+    PLOT_VARS_CFG = yaml.safe_load(_f)
 
 
 def get_erddap_dataset(ds_id, server, variables=None, constraints=None, filetype=None):
@@ -452,7 +460,7 @@ stations = [
     dict(name='8D',  lat=12.0, lon=-55.6,  stype='full'),
 ]
 
-STATION_REACH_KM = 50.0
+STATION_REACH_KM = PLOT_VARS_CFG['station_reach_km']
 
 tab10 = plt.cm.tab10
 for i, s in enumerate(stations):
@@ -562,7 +570,7 @@ fig.subplots_adjust(bottom=0.22)
 
 if not ml.empty:
     sc = ax.scatter(ml['dist_km'], ml['p'], c=ml['layer_height'],
-                    cmap=cmo.matter, s=35, zorder=2, vmin=0, vmax=40,
+                    cmap=cmo.matter, s=35, zorder=2, vmin=PLOT_VARS_CFG['ml_height']['vmin'], vmax=PLOT_VARS_CFG['ml_height']['vmax'],
                     edgecolors='k', linewidths=0.3)
     cb = plt.colorbar(sc, ax=ax, pad=0.01, extend='max')
     cb.set_label('Layer height (dbar)')
@@ -583,7 +591,7 @@ fig.subplots_adjust(bottom=0.22)
 
 if not df_ls.empty:
     sc = ax.scatter(df_ls['dist_km'], df_ls['p'], c=df_ls['turner_ang'],
-                    cmap='RdBu_r', vmin=-90, vmax=90, s=35, zorder=2,
+                    cmap='RdBu_r', vmin=PLOT_VARS_CFG['turner']['vmin'], vmax=PLOT_VARS_CFG['turner']['vmax'], s=35, zorder=2,
                     edgecolors='k', linewidths=0.3)
     cb = plt.colorbar(sc, ax=ax, pad=0.01)
     cb.set_label('Turner angle (°)')
