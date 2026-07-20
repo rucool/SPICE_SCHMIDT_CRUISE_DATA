@@ -21,10 +21,15 @@ arg_parser.add_argument('-s', '--save_dir',
                         dest='save_dir',
                         type=str,
                         default=os.path.dirname(os.path.abspath(__file__)),
-                        help='Full file path to base output directory (dated cmems_YYYY_MM_DD folders written here, data read from save_dir/cmems_data)')
+                        help='Full file path to base output directory (dated cmems_YYYY_MM_DD folders written here)')
+arg_parser.add_argument('-c', '--cmems_dir',
+                        dest='cmems_dir',
+                        type=str,
+                        default=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cmems_data'),
+                        help='Full file path to directory where downloaded CMEMS data is read from')
 args = arg_parser.parse_args()
 
-CMEMS_BASE_DIR = os.path.join(args.save_dir, 'cmems_data')
+CMEMS_BASE_DIR = args.cmems_dir
 
 # Shared bounding box for every map: [lon_min, lon_max, lat_min, lat_max]
 TROP_WTRN_ATL_EXTENT = [-63, -40.75, 4, 19]
