@@ -4,17 +4,17 @@ conductivity:
   title: Conductivity
   min:
   max:
-conservative_temperature:
+temperature:
   cmap: cmo.thermal
   title: Conservative Temperature
   min:
   max:
-absolute_salinity:
+salinity:
   cmap: cmo.haline
   title: Absolute Salinity
   min:
   max:
-potential_density:
+density:
   cmap: cmo.dense
   title: Potential Density
   min:

@@ -1,9 +1,9 @@
 # Configuration file to set x and y lims for TS diagrams
-absolute_salinity:
+salinity:
   title: Absolute Salinity
   min:
   max:
-conservative_temperature:
+temperature:
   title: Conservative Temperature
   min:
   max:
