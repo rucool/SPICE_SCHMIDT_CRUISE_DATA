@@ -479,14 +479,13 @@ with open(os.path.join(_configdir, 'cruise_stations.yml')) as _f:
 
 STATION_REACH_KM = PLOT_VARS_CFG['station_reach_km']
 
-# One uniform color for regular station triangles - a unique color per
-# station (the old tab10-based scheme) doesn't scale past ~10 stations and
-# this list now has 57. Argo/drifter deploy stations get their own distinct
-# marker (gold star / lime diamond) layered on top instead, in
-# add_station_markers() below.
-STATION_COLOR = 'steelblue'
-for s in stations:
-    s['color'] = STATION_COLOR
+# Per-station color from tab10 - only 10 distinct colors exist in this
+# palette, so with 57 stations colors repeat every 10th station. Restored
+# per your request; the alternative (one uniform color) is commented above
+# in git history if you want to revisit.
+tab10 = plt.cm.tab10
+for i, s in enumerate(stations):
+    s['color'] = tab10(i / 10)
 
 stn_pts    = np.array([[s['lat'], s['lon']] for s in stations])
 glider_pts = prof_coords[['lat', 'lon']].values
@@ -529,16 +528,14 @@ else:
 
 DRIFTER_COLOR = 'lime'
 
-# One generic entry for regular reached stations (not per-station - with 57
-# stations, individual entries would make the legend unreadable), plus one
+# Per-station legend entry (name + its own tab10 color), plus one
 # consolidated entry each for argo/drifter deploy stations that lists which
 # of those specific stations have been reached.
-legend_handles = []
-if any(s['reached'] and not s.get('argo') and not s.get('drifter') for s in stations):
-    legend_handles.append(
-        Line2D([0],[0], marker='v', color='w', markerfacecolor=STATION_COLOR,
-               markersize=16, markeredgecolor='k', markeredgewidth=0.8, label='Station (reached)')
-    )
+legend_handles = [
+    Line2D([0],[0], marker='v', color='w', markerfacecolor=s['color'],
+           markersize=16, markeredgecolor='k', markeredgewidth=0.8, label=s['name'])
+    for s in stations if s['reached'] and not s.get('argo') and not s.get('drifter')
+]
 argo_reached = [s['name'] for s in stations if s.get('argo') and s['reached']]
 if argo_reached:
     legend_handles.append(
