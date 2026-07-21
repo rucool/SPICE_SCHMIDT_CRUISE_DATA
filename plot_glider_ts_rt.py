@@ -2,8 +2,9 @@
 
 """
 Author: Lori Garzio on 7/15/2026
-Last modified: 7/15/2026
-Generate T-S diagrams of real-time glider data colored by depth.
+Last modified: 7/21/2026
+Generate T-S diagrams of real-time glider data using Conservative
+Temperature and Absolute Salinity, colored by depth.
 The full timeseries, last 24 hours, and last 48 hours
 can be plotted. The default is to plot the full timeseries.
 """
@@ -106,23 +107,23 @@ def main(args):
     
     # limit the x-axis
     xmin, xmax = ax.get_xlim()
-    if config_file['salinity']['min'] is not None:
-        xmin = config_file['salinity']['min']
-    if config_file['salinity']['max'] is not None:
-        xmax = config_file['salinity']['max']
+    if config_file['absolute_salinity']['min'] is not None:
+        xmin = config_file['absolute_salinity']['min']
+    if config_file['absolute_salinity']['max'] is not None:
+        xmax = config_file['absolute_salinity']['max']
     ax.set_xlim(xmin, xmax)
 
     # limit the y-axis
     ymin, ymax = ax.get_ylim()
-    if config_file['temperature']['min'] is not None:
-        ymin = config_file['temperature']['min']
-    if config_file['temperature']['max'] is not None:
-        ymax = config_file['temperature']['max']
+    if config_file['conservative_temperature']['min'] is not None:
+        ymin = config_file['conservative_temperature']['min']
+    if config_file['conservative_temperature']['max'] is not None:
+        ymax = config_file['conservative_temperature']['max']
     ax.set_ylim(ymin, ymax)
 
     # format labels
-    ax.set_ylabel(f'{config_file["temperature"]["title"]} ({temp.attrs["units"]})')
-    ax.set_xlabel(f'{config_file["salinity"]["title"]} ({sal.attrs["units"]})')
+    ax.set_ylabel(f'{config_file["conservative_temperature"]["title"]} ({temp.attrs["units"]})')
+    ax.set_xlabel(f'{config_file["absolute_salinity"]["title"]} ({sal.attrs["units"]})')
     ax.ticklabel_format(useOffset=False)  # don't use scientific notation for ticks
     ttl = f'{glider} T-S diagram\n{t0title} to {t1title}'
     ax.set_title(ttl, fontsize=14)
@@ -158,7 +159,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    arg_parser = argparse.ArgumentParser(description='Plot profiles of real time glider data',
+    arg_parser = argparse.ArgumentParser(description='Plot T-S diagrams of real time glider data',
                                          formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     arg_parser.add_argument('deployment',
