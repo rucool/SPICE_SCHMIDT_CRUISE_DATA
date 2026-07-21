@@ -464,13 +464,18 @@ with open(os.path.join(_configdir, 'cruise_stations.yml')) as _f:
 
 STATION_REACH_KM = PLOT_VARS_CFG['station_reach_km']
 
-# Per-station color from tab10 - only 10 distinct colors exist in this
-# palette, so with 57 stations colors repeat every 10th station. Restored
-# per your request; the alternative (one uniform color) is commented above
-# in git history if you want to revisit.
+# Per-station color cycles through tab10's 10 colors, combined with a marker
+# shape that changes every 10 stations - e.g. stations 1 and 11 share a
+# color but station 1 is a down-triangle and station 11 is an up-triangle,
+# so the (color, shape) pair is unique across up to 60 stations. Shape
+# doesn't depend on color vision at all, so this stays distinguishable for
+# colorblind viewers without needing 57 individually-unique hues. Avoids '*'
+# (Argo) and 'D' (drifter), which are reserved for those overlay markers.
 tab10 = plt.cm.tab10
+STATION_MARKER_SHAPES = ['v', '^', 's', 'p', 'h', 'o']
 for i, s in enumerate(stations):
-    s['color'] = tab10(i / 10)
+    s['color'] = tab10.colors[i % 10]
+    s['marker'] = STATION_MARKER_SHAPES[(i // 10) % len(STATION_MARKER_SHAPES)]
 
 stn_pts    = np.array([[s['lat'], s['lon']] for s in stations])
 glider_pts = prof_coords[['lat', 'lon']].values
@@ -511,7 +516,7 @@ DRIFTER_COLOR = 'lime'
 # consolidated entry each for argo/drifter deploy stations that lists which
 # of those specific stations have been reached.
 legend_handles = [
-    Line2D([0],[0], marker='v', color='w', markerfacecolor=s['color'],
+    Line2D([0],[0], marker=s['marker'], color='w', markerfacecolor=s['color'],
            markersize=16, markeredgecolor='k', markeredgewidth=0.8, label=s['name'])
     for s in stations if s['reached'] and not s.get('argo') and not s.get('drifter')
 ]
@@ -541,7 +546,7 @@ def add_station_markers(ax, fig, extra_handles=None):
     for s in stations:
         if not s['reached']:
             continue
-        ax.plot(s['dist_km_plot'], 0, marker='v',
+        ax.plot(s['dist_km_plot'], 0, marker=s['marker'],
                 color=s['color'], markersize=20,
                 transform=xform, clip_on=False, zorder=6,
                 markeredgecolor='k', markeredgewidth=0.8)
