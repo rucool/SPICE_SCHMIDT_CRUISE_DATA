@@ -583,7 +583,7 @@ def add_station_markers(ax, fig, extra_handles=None):
                     markeredgecolor='k', markeredgewidth=0.5)
     all_handles = (extra_handles or []) + legend_handles
     if all_handles:
-        ncols = min(6, len(all_handles))
+        ncols = min(10, len(all_handles))
         fig.legend(handles=all_handles, loc='lower center',
                    bbox_to_anchor=(0.5, 0.0), ncol=ncols,
                    frameon=True, fontsize=10, handletextpad=0.3, columnspacing=1.0)
