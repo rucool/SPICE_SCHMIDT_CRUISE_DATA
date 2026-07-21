@@ -547,7 +547,7 @@ def add_station_markers(ax, fig, extra_handles=None):
         if not s['reached']:
             continue
         ax.plot(s['dist_km_plot'], 0, marker=s['marker'],
-                color=s['color'], markersize=20,
+                color=s['color'], markersize=14,
                 transform=xform, clip_on=False, zorder=6,
                 markeredgecolor='k', markeredgewidth=0.8)
         if s.get('argo'):
