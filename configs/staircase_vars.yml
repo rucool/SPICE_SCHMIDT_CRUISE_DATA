@@ -6,4 +6,4 @@ ml_height:
 turner:
   vmin: -90
   vmax: 90
-station_reach_km: 50.0
+station_reach_km: 10.0
