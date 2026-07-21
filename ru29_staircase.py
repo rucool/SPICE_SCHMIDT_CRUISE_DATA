@@ -492,6 +492,16 @@ for i, s in enumerate(stations):
     s['color'] = tab10.colors[i % 10]
     s['marker'] = STATION_MARKER_SHAPES[(i // 10) % len(STATION_MARKER_SHAPES)]
 
+# Argo/drifter stations get their own color cycled among just their own
+# group (overwriting the whole-list color above), so e.g. each individual
+# drifter deployment is its own color rather than every drifter sharing one
+# lime diamond. The star/diamond shape still marks the category at a
+# glance; color+label make each individual deployment unique.
+for i, s in enumerate([s for s in stations if s.get('argo')]):
+    s['color'] = tab10.colors[i % 10]
+for i, s in enumerate([s for s in stations if s.get('drifter')]):
+    s['color'] = tab10.colors[i % 10]
+
 stn_pts    = np.array([[s['lat'], s['lon']] for s in stations])
 glider_pts = prof_coords[['lat', 'lon']].values
 closest    = scipy_cdist(stn_pts, glider_pts).argmin(axis=1)
@@ -531,30 +541,32 @@ else:
                 s['x_plot'] = s['dist_km'] + off
         i = j
 
-DRIFTER_COLOR = 'lime'
-
-# Per-station legend entry (name + its own tab10 color), plus one
-# consolidated entry each for argo/drifter deploy stations that lists which
-# of those specific stations have been reached.
-legend_handles = [
-    Line2D([0],[0], marker=s['marker'], color='w', markerfacecolor=s['color'],
-           markersize=16, markeredgecolor='k', markeredgewidth=0.8, label=s['name'])
-    for s in stations if s['reached'] and not s.get('argo') and not s.get('drifter')
-]
-argo_reached = [s['name'] for s in stations if s.get('argo') and s['reached']]
-if argo_reached:
-    legend_handles.append(
-        Line2D([0],[0], marker='*', color='w', markerfacecolor='gold',
-               markersize=18, markeredgecolor='k', markeredgewidth=0.5,
-               label=f"Argo Deploy ({', '.join(argo_reached)})")
-    )
-drifter_reached = [s['name'] for s in stations if s.get('drifter') and s['reached']]
-if drifter_reached:
-    legend_handles.append(
-        Line2D([0],[0], marker='D', color='w', markerfacecolor=DRIFTER_COLOR,
-               markersize=14, markeredgecolor='k', markeredgewidth=0.8,
-               label=f"Drifter Deploy ({', '.join(drifter_reached)})")
-    )
+# Legend built by walking `stations` in natural sequence order, so entries
+# appear in station order. Each reached station - regular, argo, or
+# drifter - gets its own individual entry with its own color; argo/drifter
+# additionally get the star/diamond shape and a "Argo Deploy"/"Drifter
+# Deploy" label prefix so the category is still obvious at a glance.
+legend_handles = []
+for s in stations:
+    if not s['reached']:
+        continue
+    if s.get('argo'):
+        legend_handles.append(
+            Line2D([0],[0], marker='*', color='w', markerfacecolor=s['color'],
+                   markersize=18, markeredgecolor='k', markeredgewidth=0.5,
+                   label=f"Argo Deploy ({s['name']})")
+        )
+    elif s.get('drifter'):
+        legend_handles.append(
+            Line2D([0],[0], marker='D', color='w', markerfacecolor=s['color'],
+                   markersize=14, markeredgecolor='k', markeredgewidth=0.8,
+                   label=f"Drifter Deploy ({s['name']})")
+        )
+    else:
+        legend_handles.append(
+            Line2D([0],[0], marker=s['marker'], color='w', markerfacecolor=s['color'],
+                   markersize=16, markeredgecolor='k', markeredgewidth=0.8, label=s['name'])
+        )
 
 ml = df_ls[df_ls['mixed_layer']].copy()
 
@@ -594,17 +606,19 @@ def add_station_markers(ax, fig, extra_handles=None):
                 markeredgecolor='k', markeredgewidth=0.8)
         if s.get('argo'):
             ax.plot(s['x_plot'], 0, marker='*',
-                    color='gold', markersize=16,
+                    color=s['color'], markersize=16,
                     transform=xform, clip_on=False, zorder=7,
                     markeredgecolor='k', markeredgewidth=0.5)
         if s.get('drifter'):
             ax.plot(s['x_plot'], 0, marker='D',
-                    color=DRIFTER_COLOR, markersize=13,
+                    color=s['color'], markersize=13,
                     transform=xform, clip_on=False, zorder=7,
                     markeredgecolor='k', markeredgewidth=0.5)
     all_handles = (extra_handles or []) + legend_handles
     if all_handles:
-        ncols = min(10, len(all_handles))
+        max_ncols = 10
+        nrows = -(-len(all_handles) // max_ncols)  # ceil
+        ncols = -(-len(all_handles) // nrows)  # smallest ncols that still fits in nrows - avoids a mostly-empty trailing row
         fig.legend(handles=_legend_row_major_order(all_handles, ncols), loc='lower center',
                    bbox_to_anchor=(0.5, 0.0), ncol=ncols,
                    frameon=True, fontsize=10, handletextpad=0.3, columnspacing=1.0)
