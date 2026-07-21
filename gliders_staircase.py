@@ -572,20 +572,21 @@ def add_station_markers(ax, fig, extra_handles=None):
     for s in stations:
         if not s['reached']:
             continue
-        ax.plot(s['dist_km_plot'], 0, marker=s['marker'],
-                color=s['color'], markersize=14,
-                transform=xform, clip_on=False, zorder=6,
-                markeredgecolor='k', markeredgewidth=0.8)
         if s.get('argo'):
             ax.plot(s['dist_km_plot'], 0, marker='*',
                     color=ARGO_COLOR, markersize=16,
-                    transform=xform, clip_on=False, zorder=7,
+                    transform=xform, clip_on=False, zorder=6,
                     markeredgecolor='k', markeredgewidth=0.5)
-        if s.get('drifter'):
+        elif s.get('drifter'):
             ax.plot(s['dist_km_plot'], 0, marker='D',
                     color=DRIFTER_COLOR, markersize=13,
-                    transform=xform, clip_on=False, zorder=7,
+                    transform=xform, clip_on=False, zorder=6,
                     markeredgecolor='k', markeredgewidth=0.5)
+        else:
+            ax.plot(s['dist_km_plot'], 0, marker=s['marker'],
+                    color=s['color'], markersize=14,
+                    transform=xform, clip_on=False, zorder=6,
+                    markeredgecolor='k', markeredgewidth=0.8)
     all_handles = (extra_handles or []) + legend_handles
     if all_handles:
         max_ncols = 10
