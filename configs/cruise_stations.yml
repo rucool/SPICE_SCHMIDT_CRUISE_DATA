@@ -1,0 +1,259 @@
+# Fixed zonal survey line stations (~12N). Edit this list directly to adjust
+# station positions/notes - no code changes needed. 'argo': true marks Argo
+# float deployment stations, 'drifter': true marks surface drifter
+# deployment stations - both get a distinct marker + legend entry on the
+# ru29_staircase plots, in addition to the standard station triangle.
+stations:
+  - name: 1D
+    lat: 12.0
+    lon: -57.0
+    stype: full
+    notes: dry run
+  - name: 2D
+    lat: 12.0
+    lon: -56.8
+    stype: full
+  - name: 3D
+    lat: 12.0
+    lon: -56.6
+    stype: full
+  - name: 4N
+    lat: 12.0
+    lon: -56.4
+    stype: mini
+  - name: 5N
+    lat: 12.0
+    lon: -56.2
+    stype: mini
+  - name: 6N
+    lat: 12.0
+    lon: -56.0
+    stype: mini
+  - name: 7D
+    lat: 12.0
+    lon: -55.8
+    stype: full
+    argo: true
+    notes: "Deploy 2 Argo with SeaBird CTD (2062 and 2085)"
+  - name: 8D
+    lat: 12.0
+    lon: -55.6
+    stype: full
+  - name: 9D
+    lat: 12.0
+    lon: -55.4
+    stype: full
+  - name: 10N
+    lat: 12.0
+    lon: -55.2
+    stype: mini
+  - name: 11N
+    lat: 12.0
+    lon: -55.0
+    stype: mini
+  - name: 12N
+    lat: 12.0
+    lon: -54.8
+    stype: mini
+  - name: 13D
+    lat: 12.0
+    lon: -54.6
+    stype: full
+  - name: 14D
+    lat: 12.0
+    lon: -54.4
+    stype: full
+  - name: 15D
+    lat: 12.0
+    lon: -54.2
+    stype: full
+  - name: 16N
+    lat: 12.0
+    lon: -54.0
+    stype: mini
+  - name: 17N
+    lat: 12.0
+    lon: -53.8
+    stype: mini
+  - name: 18N
+    lat: 12.0
+    lon: -53.6
+    stype: mini
+  - name: 19D
+    lat: 12.0
+    lon: -53.4
+    stype: full
+  - name: 20D
+    lat: 12.0
+    lon: -53.2
+    stype: full
+  - name: 21D
+    lat: 12.0
+    lon: -53.0
+    stype: full
+  - name: 22N
+    lat: 12.0
+    lon: -52.8
+    stype: mini
+  - name: 23N
+    lat: 12.0
+    lon: -52.6
+    stype: mini
+  - name: 24N
+    lat: 12.0
+    lon: -52.4
+    stype: mini
+  - name: 25D
+    lat: 12.0
+    lon: -52.2
+    stype: full
+    drifter: true
+    notes: "Deploy Drifter 1"
+  - name: 26D
+    lat: 12.0
+    lon: -52.0
+    stype: full
+  - name: 27D
+    lat: 12.0
+    lon: -51.8
+    stype: full
+  - name: 28N
+    lat: 12.0
+    lon: -51.6
+    stype: mini
+    drifter: true
+    notes: "Deploy Drifter 2"
+  - name: 29N
+    lat: 12.0
+    lon: -51.4
+    stype: mini
+  - name: 30N
+    lat: 12.0
+    lon: -51.2
+    stype: mini
+  - name: 31D
+    lat: 12.0
+    lon: -51.0
+    stype: full
+    drifter: true
+    notes: "Deploy Drifter 3"
+  - name: 32D
+    lat: 12.0
+    lon: -50.8
+    stype: full
+  - name: 33D
+    lat: 12.0
+    lon: -50.6
+    stype: full
+  - name: 34N
+    lat: 12.0
+    lon: -50.4
+    stype: mini
+    drifter: true
+    notes: "Deploy Drifter 4"
+  - name: 35N
+    lat: 12.0
+    lon: -50.2
+    stype: mini
+  - name: 36N
+    lat: 12.0
+    lon: -50.0
+    stype: mini
+  - name: 37D
+    lat: 12.0
+    lon: -49.8
+    stype: full
+  - name: 38D
+    lat: 12.0
+    lon: -49.6
+    stype: full
+    drifter: true
+    notes: "Deploy Drifter 5"
+  - name: 39D
+    lat: 12.0
+    lon: -49.4
+    stype: full
+  - name: 40N
+    lat: 12.0
+    lon: -49.2
+    stype: mini
+  - name: 41N
+    lat: 12.0
+    lon: -49.0
+    stype: mini
+    drifter: true
+    notes: "Deploy Drifter 6"
+  - name: 42N
+    lat: 12.0
+    lon: -48.8
+    stype: mini
+  - name: 43D
+    lat: 12.0
+    lon: -48.6
+    stype: full
+  - name: 44D
+    lat: 12.0
+    lon: -48.4
+    stype: full
+  - name: 45D
+    lat: 12.0
+    lon: -48.2
+    stype: full
+    drifter: true
+    notes: "Deploy Drifter 7"
+  - name: 46N
+    lat: 12.0
+    lon: -48.0
+    stype: mini
+  - name: 47N
+    lat: 12.0
+    lon: -47.8
+    stype: mini
+  - name: 48N
+    lat: 12.0
+    lon: -47.6
+    stype: mini
+    drifter: true
+    notes: "Deploy Drifter 8"
+  - name: 49D
+    lat: 12.0
+    lon: -47.4
+    stype: full
+  - name: 50D
+    lat: 12.0
+    lon: -47.2
+    stype: full
+  - name: 51D
+    lat: 12.0
+    lon: -47.0
+    stype: full
+    drifter: true
+    notes: "Deploy Drifter 9"
+  - name: 52N
+    lat: 12.0
+    lon: -46.8
+    stype: mini
+  - name: 53N
+    lat: 12.0
+    lon: -46.6
+    stype: mini
+  - name: 54N
+    lat: 12.0
+    lon: -46.4
+    stype: mini
+  - name: 55D
+    lat: 12.0
+    lon: -46.2
+    stype: full
+    drifter: true
+    notes: "Deploy Drifter 10"
+  - name: 56D
+    lat: 12.0
+    lon: -46.0
+    stype: full
+  - name: 57D
+    lat: 12.0
+    lon: -45.8
+    stype: full
+    argo: true
+    notes: "Deploy 2 Argo with RBR CTD (11729 and 11731)"

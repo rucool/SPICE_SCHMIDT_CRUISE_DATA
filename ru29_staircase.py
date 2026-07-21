@@ -39,7 +39,7 @@ if not hasattr(pd.DataFrame, 'append'):
     pd.DataFrame.append = _append
 
 
-arg_parser = argparse.ArgumentParser(description='Detect thermohaline staircases in ru29 glider profiles and save hovmoller figures',
+arg_parser = argparse.ArgumentParser(description='Detect thermohaline staircases in ru29 glider profiles and save hovmoller figures (zonal variant: plots vs longitude instead of distance-along-track when the glider is within the fixed zonal survey latitude band)',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 arg_parser.add_argument('-s', '--save_dir',
                         dest='save_dir',
@@ -50,9 +50,9 @@ args = arg_parser.parse_args()
 
 # Tunable numeric limits (colorbar ranges, station reach) live in this
 # config file so they can be adjusted without editing python - see
-# configs/ru29_staircase_vars.yml.
+# configs/staircase_vars.yml.
 _configdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs')
-with open(os.path.join(_configdir, 'ru29_staircase_vars.yml')) as _f:
+with open(os.path.join(_configdir, 'staircase_vars.yml')) as _f:
     PLOT_VARS_CFG = yaml.safe_load(_f)
 
 
@@ -404,6 +404,27 @@ for i in range(1, len(lons)):
     dists[i] = dists[i-1] + gsw.distance([lons[i-1], lons[i]], [lats[i-1], lats[i]])[0] / 1000.0
 prof_coords['dist_km'] = dists
 dist_map = prof_coords.set_index('profile_id')['dist_km']
+lon_map = prof_coords.set_index('profile_id')['lon']
+
+# Zonal-mode check: if the glider's recent profiles sit within the fixed
+# zonal survey latitude band, plot against longitude instead of cumulative
+# distance along track - more physically meaningful when the glider is
+# running an east-west line at ~constant latitude, rather than transiting
+# toward it. Uses the median lat of the last few profiles (not just the
+# single latest one) so one noisy profile that briefly meanders outside the
+# band does not flip the whole run's plotting mode. prof_coords is already
+# sorted by profile_time, so .tail(n) is the most recent profiles.
+ZONAL_LAT_MIN, ZONAL_LAT_MAX = 11.8, 12.2
+ZONAL_CHECK_N_PROFILES = 5
+_recent_lat = prof_coords['lat'].tail(ZONAL_CHECK_N_PROFILES).median()
+ZONAL_MODE = ZONAL_LAT_MIN <= _recent_lat <= ZONAL_LAT_MAX
+if ZONAL_MODE:
+    x_col, x_label = 'lon', 'Longitude (°)'
+    print(f"Zonal mode: median lat of last {ZONAL_CHECK_N_PROFILES} profiles={_recent_lat:.3f} within [{ZONAL_LAT_MIN}, {ZONAL_LAT_MAX}] - plotting vs longitude")
+else:
+    x_col, x_label = 'dist_km', 'Distance along track (km)'
+    print(f"Distance mode: median lat of last {ZONAL_CHECK_N_PROFILES} profiles={_recent_lat:.3f} outside zonal band [{ZONAL_LAT_MIN}, {ZONAL_LAT_MAX}] - plotting vs distance along track")
+
 if not _target:  # do not overwrite current track CSV during backfill
     prof_coords[["lat", "lon", "profile_time"]].rename(columns={"profile_time": "time"}).to_csv(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "ru29_latest_track.csv"), index=False)
@@ -412,8 +433,10 @@ if not _target:  # do not overwrite current track CSV during backfill
 gdf_dist         = gdf_sorted.copy()
 gdf_dist['dist_km'] = gdf_dist['profile_id'].map(dist_map)
 df_ls['dist_km'] = df_ls['profile_id'].map(dist_map)
+df_ls['lon'] = df_ls['profile_id'].map(lon_map)
 if not df_mixes.empty:
     df_mixes['dist_km'] = df_mixes['profile_id'].map(dist_map)
+    df_mixes['lon'] = df_mixes['profile_id'].map(lon_map)
 
 print(f"Track length: {dists[-1]:.1f} km  |  {len(prof_coords)} profiles")
 print(f"Staircase layers found: {len(df_ls)}  (mixed: {df_ls['mixed_layer'].sum()}, gradient: {df_ls['gradient_layer'].sum()})")
@@ -449,22 +472,21 @@ for v in ru29_plot_vars:
     os.makedirs(os.path.join(daily_dir, f"ru29_{v}"), exist_ok=True)
 
 
-stations = [
-    dict(name='1D',  lat=12.0, lon=-57.0,  stype='full',  notes='dry run'),
-    dict(name='2D',  lat=12.0, lon=-56.8,  stype='full'),
-    dict(name='3D',  lat=12.0, lon=-56.6,  stype='full'),
-    dict(name='4N',  lat=12.0, lon=-56.4,  stype='mini'),
-    dict(name='5N',  lat=12.0, lon=-56.2,  stype='mini'),
-    dict(name='6N',  lat=12.0, lon=-56.0,  stype='mini'),
-    dict(name='7D',  lat=12.0, lon=-55.8,  stype='full',  argo=True),
-    dict(name='8D',  lat=12.0, lon=-55.6,  stype='full'),
-]
+# Station list lives in configs/cruise_stations.yml - edit that file directly
+# to adjust positions/notes/argo/drifter flags, no code changes needed.
+with open(os.path.join(_configdir, 'cruise_stations.yml')) as _f:
+    stations = yaml.safe_load(_f)['stations']
 
 STATION_REACH_KM = PLOT_VARS_CFG['station_reach_km']
 
-tab10 = plt.cm.tab10
-for i, s in enumerate(stations):
-    s['color'] = tab10(i / 10)
+# One uniform color for regular station triangles - a unique color per
+# station (the old tab10-based scheme) doesn't scale past ~10 stations and
+# this list now has 57. Argo/drifter deploy stations get their own distinct
+# marker (gold star / lime diamond) layered on top instead, in
+# add_station_markers() below.
+STATION_COLOR = 'steelblue'
+for s in stations:
+    s['color'] = STATION_COLOR
 
 stn_pts    = np.array([[s['lat'], s['lon']] for s in stations])
 glider_pts = prof_coords[['lat', 'lon']].values
@@ -480,34 +502,56 @@ reached = [s for s in stations if s['reached']]
 print(f"Stations reached so far ({len(reached)}/{len(stations)}): "
       f"{[s['name'] for s in reached] or 'none yet'}")
 
-for s in stations:
-    s['dist_km_plot'] = s['dist_km']
+if ZONAL_MODE:
+    # Stations already have an explicit longitude - plot each at its true
+    # position, no distance-along-track de-overlap offset needed.
+    for s in stations:
+        s['x_plot'] = s['lon']
+else:
+    for s in stations:
+        s['x_plot'] = s['dist_km']
 
-spacing_km = 2.0
-reached_by_dist = sorted(reached, key=lambda s: s['dist_km'])
-i = 0
-while i < len(reached_by_dist):
-    group = [reached_by_dist[i]]
-    j = i + 1
-    while j < len(reached_by_dist) and reached_by_dist[j]['dist_km'] - group[0]['dist_km'] < 1.0:
-        group.append(reached_by_dist[j])
-        j += 1
-    if len(group) > 1:
-        group = sorted(group, key=lambda s: s['lon'])
-        offsets = np.arange(len(group)) * spacing_km - (len(group) - 1) * spacing_km / 2
-        for s, off in zip(group, offsets):
-            s['dist_km_plot'] = s['dist_km'] + off
-    i = j
+    spacing_km = 2.0
+    reached_by_dist = sorted(reached, key=lambda s: s['dist_km'])
+    i = 0
+    while i < len(reached_by_dist):
+        group = [reached_by_dist[i]]
+        j = i + 1
+        while j < len(reached_by_dist) and reached_by_dist[j]['dist_km'] - group[0]['dist_km'] < 1.0:
+            group.append(reached_by_dist[j])
+            j += 1
+        if len(group) > 1:
+            group = sorted(group, key=lambda s: s['lon'])
+            offsets = np.arange(len(group)) * spacing_km - (len(group) - 1) * spacing_km / 2
+            for s, off in zip(group, offsets):
+                s['x_plot'] = s['dist_km'] + off
+        i = j
 
-legend_handles = [
-    Line2D([0],[0], marker='v', color='w', markerfacecolor=s['color'],
-           markersize=16, markeredgecolor='k', markeredgewidth=0.8, label=s['name'])
-    for s in stations if s['reached']
-]
-if any(s.get('argo') and s['reached'] for s in stations):
+DRIFTER_COLOR = 'lime'
+
+# One generic entry for regular reached stations (not per-station - with 57
+# stations, individual entries would make the legend unreadable), plus one
+# consolidated entry each for argo/drifter deploy stations that lists which
+# of those specific stations have been reached.
+legend_handles = []
+if any(s['reached'] and not s.get('argo') and not s.get('drifter') for s in stations):
+    legend_handles.append(
+        Line2D([0],[0], marker='v', color='w', markerfacecolor=STATION_COLOR,
+               markersize=16, markeredgecolor='k', markeredgewidth=0.8, label='Station (reached)')
+    )
+argo_reached = [s['name'] for s in stations if s.get('argo') and s['reached']]
+if argo_reached:
     legend_handles.append(
         Line2D([0],[0], marker='*', color='w', markerfacecolor='gold',
-               markersize=18, markeredgecolor='k', markeredgewidth=0.5, label='Argo Deploy (7D)')
+               markersize=18, markeredgecolor='k', markeredgewidth=0.5,
+               label=f"Argo Deploy ({', '.join(argo_reached)})")
+    )
+drifter_reached = [s['name'] for s in stations if s.get('drifter') and s['reached']]
+if drifter_reached:
+    legend_handles.append(
+        Line2D([0],[0], marker='D', color='w', markerfacecolor=DRIFTER_COLOR,
+               markersize=14, markeredgecolor='k', markeredgewidth=0.8,
+               label=f"Drifter Deploy ({', '.join(drifter_reached)})")
     )
 
 ml = df_ls[df_ls['mixed_layer']].copy()
@@ -521,13 +565,18 @@ def add_station_markers(ax, fig, extra_handles=None):
     for s in stations:
         if not s['reached']:
             continue
-        ax.plot(s['dist_km_plot'], 0, marker='v',
+        ax.plot(s['x_plot'], 0, marker='v',
                 color=s['color'], markersize=20,
                 transform=xform, clip_on=False, zorder=6,
                 markeredgecolor='k', markeredgewidth=0.8)
         if s.get('argo'):
-            ax.plot(s['dist_km_plot'], 0, marker='*',
+            ax.plot(s['x_plot'], 0, marker='*',
                     color='gold', markersize=16,
+                    transform=xform, clip_on=False, zorder=7,
+                    markeredgecolor='k', markeredgewidth=0.5)
+        if s.get('drifter'):
+            ax.plot(s['x_plot'], 0, marker='D',
+                    color=DRIFTER_COLOR, markersize=13,
                     transform=xform, clip_on=False, zorder=7,
                     markeredgecolor='k', markeredgewidth=0.5)
     all_handles = (extra_handles or []) + legend_handles
@@ -543,18 +592,18 @@ fig, ax = plt.subplots(figsize=(16, 5))
 fig.subplots_adjust(bottom=0.22)
 
 sc = ax.scatter(
-    gdf_dist['dist_km'], gdf_dist['pressure'],
+    gdf_dist[x_col], gdf_dist['pressure'],
     c=gdf_dist['conservative_temperature'],
     cmap=cmo.thermal, s=0.5, rasterized=True, zorder=1
 )
 for _, row in ml.iterrows():
-    ax.plot([row['dist_km']] * 2, [row['p_start'], row['p_end']],
+    ax.plot([row[x_col]] * 2, [row['p_start'], row['p_end']],
             color='white', lw=3.2, alpha=0.95, zorder=3,
             solid_capstyle='round', path_effects=[pe.Stroke(linewidth=4.4, foreground='black'), pe.Normal()])
 ax.invert_yaxis()
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('Pressure (dbar)')
-ax.set_xlabel('Distance along track (km)')
+ax.set_xlabel(x_label)
 cb = plt.colorbar(sc, ax=ax, pad=0.01)
 cb.set_label('CT (°C)')
 ax.set_title(f"{title_datetime_str}\nConservative Temperature  |  white/black = staircase mixed layers", loc='left')
@@ -569,7 +618,7 @@ fig, ax = plt.subplots(figsize=(16, 5))
 fig.subplots_adjust(bottom=0.22)
 
 if not ml.empty:
-    sc = ax.scatter(ml['dist_km'], ml['p'], c=ml['layer_height'],
+    sc = ax.scatter(ml[x_col], ml['p'], c=ml['layer_height'],
                     cmap=cmo.matter, s=35, zorder=2, vmin=PLOT_VARS_CFG['ml_height']['vmin'], vmax=PLOT_VARS_CFG['ml_height']['vmax'],
                     edgecolors='k', linewidths=0.3)
     cb = plt.colorbar(sc, ax=ax, pad=0.01, extend='max')
@@ -577,7 +626,7 @@ if not ml.empty:
 ax.invert_yaxis()
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('Pressure (dbar)')
-ax.set_xlabel('Distance along track (km)')
+ax.set_xlabel(x_label)
 ax.set_title(f"{title_datetime_str}\nMixed-layer height", loc='left')
 add_station_markers(ax, fig)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
@@ -590,7 +639,7 @@ fig, ax = plt.subplots(figsize=(16, 5))
 fig.subplots_adjust(bottom=0.22)
 
 if not df_ls.empty:
-    sc = ax.scatter(df_ls['dist_km'], df_ls['p'], c=df_ls['turner_ang'],
+    sc = ax.scatter(df_ls[x_col], df_ls['p'], c=df_ls['turner_ang'],
                     cmap='RdBu_r', vmin=PLOT_VARS_CFG['turner']['vmin'], vmax=PLOT_VARS_CFG['turner']['vmax'], s=35, zorder=2,
                     edgecolors='k', linewidths=0.3)
     cb = plt.colorbar(sc, ax=ax, pad=0.01)
@@ -598,7 +647,7 @@ if not df_ls.empty:
 ax.invert_yaxis()
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('Pressure (dbar)')
-ax.set_xlabel('Distance along track (km)')
+ax.set_xlabel(x_label)
 ax.set_title(f"{title_datetime_str}\nTurner angle  (red = salt fingering >45°, blue = diffusive convection <-45°)", loc='left')
 add_station_markers(ax, fig)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
@@ -615,6 +664,7 @@ if 'df_results' not in dir() or df_results is None:
     df_results = pd.concat(df_out_all, ignore_index=True) if df_out_all else pd.read_csv(f"{ds_id}_staircase_results.csv")
 
 df_results['dist_km'] = df_results['profile_id'].map(dist_map)
+df_results['lon'] = df_results['profile_id'].map(lon_map)
 
 #Layer classification column 
 df_results['layer_type'] = 0  # background
@@ -634,6 +684,7 @@ profile_stats = (
     .reset_index()
 )
 profile_stats['dist_km'] = profile_stats['profile_id'].map(dist_map)
+profile_stats['lon'] = profile_stats['profile_id'].map(lon_map)
 
 # -- Surface MLD per profile: temperature threshold (0.2 degC drop from 10 dbar ref) --
 def _surface_mld(group, delta_T=0.2, ref_p=10.0):
@@ -653,7 +704,7 @@ profile_stats['p_min_clamped'] = np.maximum(
     profile_stats['mld'].fillna(profile_stats['p_min'])
 )
 # all profiles: presence/absence flag (like argo has_staircase)
-all_profs = prof_coords[['profile_id', 'dist_km']].merge(
+all_profs = prof_coords[['profile_id', 'dist_km', 'lon']].merge(
     df_ls[['profile_id']].drop_duplicates().assign(has_staircase=1),
     on='profile_id', how='left'
 )
@@ -668,18 +719,18 @@ fig, ax = plt.subplots(figsize=(16, 5))
 fig.subplots_adjust(bottom=0.22)
 
 sc = ax.scatter(
-    df_results['dist_km'], df_results['p'],
+    df_results[x_col], df_results['p'],
     c=df_results['sigma1'], cmap=cmo.dense,
     s=3, rasterized=True, zorder=1
 )
 for _, row in ml.iterrows():
-    ax.plot([row['dist_km']] * 2, [row['p_start'], row['p_end']],
+    ax.plot([row[x_col]] * 2, [row['p_start'], row['p_end']],
             color='white', lw=3.2, alpha=0.95, zorder=3,
             solid_capstyle='round', path_effects=[pe.Stroke(linewidth=4.4, foreground='black'), pe.Normal()])
 ax.invert_yaxis()
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('Pressure (dbar)')
-ax.set_xlabel('Distance along track (km)')
+ax.set_xlabel(x_label)
 cb = plt.colorbar(sc, ax=ax, pad=0.01)
 cb.set_label(' (kg m$^{-3}$)')
 ax.set_title(f"{title_datetime_str}\nPotential density (sigma1)  |  white/black = staircase mixed layers", loc='left')
@@ -705,21 +756,21 @@ fig, ax = plt.subplots(figsize=(16, 5))
 fig.subplots_adjust(bottom=0.22)
 
 ax.scatter(
-    df_results.loc[df_results['layer_type'] == 0, 'dist_km'],
+    df_results.loc[df_results['layer_type'] == 0, x_col],
     df_results.loc[df_results['layer_type'] == 0, 'p'],
     color='lightgray', s=3, rasterized=True, zorder=1
 )
 for lt, color in [(1, 'steelblue'), (2, 'darkorange')]:
     mask = df_results['layer_type'] == lt
     ax.scatter(
-        df_results.loc[mask, 'dist_km'], df_results.loc[mask, 'p'],
+        df_results.loc[mask, x_col], df_results.loc[mask, 'p'],
         color=color, s=18, rasterized=True, zorder=2, edgecolors='none'
     )
 
 ax.invert_yaxis()
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('Pressure (dbar)')
-ax.set_xlabel('Distance along track (km)')
+ax.set_xlabel(x_label)
 ax.set_title(f"{title_datetime_str}\nStaircase layer classification", loc='left')
 add_station_markers(ax, fig, extra_handles=class_legend)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
@@ -731,12 +782,12 @@ plt.show()
 fig, ax = plt.subplots(figsize=(16, 5))
 fig.subplots_adjust(bottom=0.22)
 
-ax.scatter(all_profs['dist_km'], np.zeros(len(all_profs)),
+ax.scatter(all_profs[x_col], np.zeros(len(all_profs)),
            c=all_profs['has_staircase'], cmap='RdYlGn',
            vmin=0, vmax=1, s=40, zorder=2, alpha=0.85,
            edgecolors='k', linewidths=0.3)
 sc = ax.scatter(
-    profile_stats['dist_km'], profile_stats['n_staircases'],
+    profile_stats[x_col], profile_stats['n_staircases'],
     c=profile_stats['n_staircases'], cmap=cmo.ice_r,
     s=70, zorder=3, edgecolors='k', linewidths=0.5
 )
@@ -744,7 +795,7 @@ cb = plt.colorbar(sc, ax=ax, pad=0.01)
 cb.set_label('# staircases')
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('# Staircases detected')
-ax.set_xlabel('Distance along track (km)')
+ax.set_xlabel(x_label)
 ax.set_title(f"{title_datetime_str}\nStaircase count per profile  |  bottom strip = presence (green) / absence (red)", loc='left')
 ax.set_ylim(-0.5)
 add_station_markers(ax, fig)
@@ -771,17 +822,17 @@ fig.subplots_adjust(bottom=0.22)
 
 for _, row in profile_stats.iterrows():
     color = cmap_count(count_norm(row['n_staircases']))
-    ax.plot([row['dist_km']] * 2, [row['p_min_clamped'], row['p_max']],
+    ax.plot([row[x_col]] * 2, [row['p_min_clamped'], row['p_max']],
             color=color, lw=4.5, zorder=2, solid_capstyle='round',
             path_effects=[pe.Stroke(linewidth=6.0, foreground='black', alpha=0.5), pe.Normal()])
 
-ax.scatter(profile_stats['dist_km'], profile_stats['p_min_clamped'],
+ax.scatter(profile_stats[x_col], profile_stats['p_min_clamped'],
            c=profile_stats['n_staircases'], cmap=cmap_count, norm=count_norm,
            s=55, marker='^', zorder=4, edgecolors='k', linewidths=0.5)
-ax.scatter(profile_stats['dist_km'], profile_stats['p_median'],
+ax.scatter(profile_stats[x_col], profile_stats['p_median'],
            c=profile_stats['n_staircases'], cmap=cmap_count, norm=count_norm,
            s=55, marker='D', zorder=4, edgecolors='k', linewidths=0.5)
-ax.scatter(profile_stats['dist_km'], profile_stats['p_max'],
+ax.scatter(profile_stats[x_col], profile_stats['p_max'],
            c=profile_stats['n_staircases'], cmap=cmap_count, norm=count_norm,
            s=55, marker='v', zorder=4, edgecolors='k', linewidths=0.5)
 
@@ -793,7 +844,7 @@ cb.set_label('# staircases')
 ax.invert_yaxis()
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('Pressure (dbar)')
-ax.set_xlabel('Distance along track (km)')
+ax.set_xlabel(x_label)
 ax.set_title(f"{title_datetime_str}\nStaircase depth range per profile  |  bar = min-max, markers = shallowest / median / deepest", loc='left')
 add_station_markers(ax, fig, extra_handles=depth_legend)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
