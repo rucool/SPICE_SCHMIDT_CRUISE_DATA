@@ -24,7 +24,17 @@ chlorophyll_a:
   title: Chlorophyll-a
   min:
   max:
+chlorophyll:
+  cmap: cmo.algae
+  title: Chlorophyll-a 470nm
+  min:
+  max:
 beta_700nm:
+  cmap: cmo.thermal
+  title: Backscatter 700nm
+  min:
+  max:
+backscatter:
   cmap: cmo.thermal
   title: Backscatter 700nm
   min:

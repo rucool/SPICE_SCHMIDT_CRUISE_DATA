@@ -2,7 +2,7 @@
 
 """
 Author: Lori Garzio on 7/10/2026
-Last modified: 7/14/2026
+Last modified: 7/21/2026
 Plot profiles of real-time glider data, colored by time.
 The full timeseries, last 24 hours, and last 48 hours
 can be plotted. The default is to plot the full timeseries.
@@ -19,7 +19,6 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.colors as mcolors
 import functions.common as cf
-import functions.plotting as pf
 plt.rcParams.update({'font.size': 12})
 
 
@@ -33,14 +32,32 @@ def main(args):
     if ds is None:
         print(f'No dataset returned for {dsid}')
         sys.exit(1)
-    ds = ds.drop_dims(['trajectory', 'profile'])
-    ds = ds.swap_dims({'obs': 'profile_time'})
-    ds = ds.assign_coords(depth_interpolated=ds.depth_interpolated)
-    ds = ds.sortby(ds.profile_time)
+    try:
+        ds = ds.drop_dims(['trajectory', 'profile'])
+    except ValueError:
+        try:
+            ds = ds.drop_dims(['timeseries']) # VOTO glider
+        except ValueError:
+            pass
+    
     ds = cf.add_teos10_variables(ds)
     
-    deploy = ds.attrs['deployment']
-    glider = ds.platform.attrs['id']
+    try:
+        deploy = ds.attrs['deployment']
+    except KeyError:
+        deploy = ds.title  # VOTO glider
+    
+    try:
+        glider = ds.platform.attrs['id']
+    except AttributeError:
+        glider = ds.title.split('-')[0]  # VOTO glider
+
+    # define the depth variable to use for plotting
+    try:
+        ds.depth_interpolated
+        depth_var = 'depth_interpolated'
+    except AttributeError:
+        depth_var = 'depth'
 
     save_dir = os.path.join(save_dir, deploy, 'profiles', time_range)
     os.makedirs(save_dir, exist_ok=True)
@@ -49,6 +66,17 @@ def main(args):
         ds = ds.where(ds.time >= (np.nanmax(ds.time) - np.timedelta64(1, 'D')), drop=True)
     elif time_range == 'last_48h':
         ds = ds.where(ds.time >= (np.nanmax(ds.time) - np.timedelta64(2, 'D')), drop=True)
+
+    try:
+        ds.profile_time
+        ds = ds.swap_dims({'obs': 'profile_time'})
+        ds = ds.assign_coords(depth_interpolated=ds.depth_interpolated)
+        ds = ds.sortby(ds.profile_time)
+    except AttributeError:  # VOTO glider
+        # add profile time
+        ds = cf.add_profile_time(ds)
+        ds = ds.swap_dims({'obs': 'profile_time'})
+        ds = ds.sortby(ds.profile_time)
     
     t0str = pd.to_datetime(np.nanmin(ds.time)).strftime('%Y-%m-%dT%H:%M')
     t1str = pd.to_datetime(np.nanmax(ds.time)).strftime('%Y-%m-%dT%H:%M')
@@ -73,10 +101,14 @@ def main(args):
 
     # find profiles
     ptimes = np.unique(ds.profile_time.values)
+    if np.issubdtype(ptimes.dtype, np.number):
+        ptimes_dt = pd.to_datetime(ptimes, unit='s', origin='unix')
+    else:
+        ptimes_dt = pd.to_datetime(ptimes)
 
     # make a color map for profiles based on profile time
     cmap = plt.cm.rainbow
-    ptime_nums = mdates.date2num(pd.to_datetime(ptimes))
+    ptime_nums = mdates.date2num(ptimes_dt)
     vmin = np.nanmin(ptime_nums)
     vmax = np.nanmax(ptime_nums)
     if vmin == vmax:
@@ -99,9 +131,9 @@ def main(args):
             for i, pt in enumerate(ptimes):
                 vpt = variable.sel(profile_time=pt)
                 if np.sum(~np.isnan(vpt.values)) > 1:
-                    ptime_num = mdates.date2num(pd.to_datetime(pt))
+                    ptime_num = ptime_nums[i]
                     scatter_args['color'] = cmap(norm(ptime_num))
-                    xc = ax.scatter(vpt.values, vpt.depth_interpolated.values, **scatter_args)
+                    xc = ax.scatter(vpt.values, vpt[depth_var].values, **scatter_args)
 
             # limit the x-axis to the min and max of the variable values
             xmin, xmax = ax.get_xlim()
