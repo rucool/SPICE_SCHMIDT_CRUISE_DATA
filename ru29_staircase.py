@@ -492,15 +492,8 @@ for i, s in enumerate(stations):
     s['color'] = tab10.colors[i % 10]
     s['marker'] = STATION_MARKER_SHAPES[(i // 10) % len(STATION_MARKER_SHAPES)]
 
-# Argo/drifter stations get their own color cycled among just their own
-# group (overwriting the whole-list color above), so e.g. each individual
-# drifter deployment is its own color rather than every drifter sharing one
-# lime diamond. The star/diamond shape still marks the category at a
-# glance; color+label make each individual deployment unique.
-for i, s in enumerate([s for s in stations if s.get('argo')]):
-    s['color'] = tab10.colors[i % 10]
-for i, s in enumerate([s for s in stations if s.get('drifter')]):
-    s['color'] = tab10.colors[i % 10]
+ARGO_COLOR = 'gold'
+DRIFTER_COLOR = 'lime'
 
 stn_pts    = np.array([[s['lat'], s['lon']] for s in stations])
 glider_pts = prof_coords[['lat', 'lon']].values
@@ -552,15 +545,15 @@ for s in stations:
         continue
     if s.get('argo'):
         legend_handles.append(
-            Line2D([0],[0], marker='*', color='w', markerfacecolor=s['color'],
+            Line2D([0],[0], marker='*', color='w', markerfacecolor=ARGO_COLOR,
                    markersize=18, markeredgecolor='k', markeredgewidth=0.5,
-                   label=f"Argo Deploy ({s['name']})")
+                   label=f"Argo ({s['name']})")
         )
     elif s.get('drifter'):
         legend_handles.append(
-            Line2D([0],[0], marker='D', color='w', markerfacecolor=s['color'],
+            Line2D([0],[0], marker='D', color='w', markerfacecolor=DRIFTER_COLOR,
                    markersize=14, markeredgecolor='k', markeredgewidth=0.8,
-                   label=f"Drifter Deploy ({s['name']})")
+                   label=f"Drifter ({s['name']})")
         )
     else:
         legend_handles.append(
@@ -606,12 +599,12 @@ def add_station_markers(ax, fig, extra_handles=None):
                 markeredgecolor='k', markeredgewidth=0.8)
         if s.get('argo'):
             ax.plot(s['x_plot'], 0, marker='*',
-                    color=s['color'], markersize=16,
+                    color=ARGO_COLOR, markersize=16,
                     transform=xform, clip_on=False, zorder=7,
                     markeredgecolor='k', markeredgewidth=0.5)
         if s.get('drifter'):
             ax.plot(s['x_plot'], 0, marker='D',
-                    color=s['color'], markersize=13,
+                    color=DRIFTER_COLOR, markersize=13,
                     transform=xform, clip_on=False, zorder=7,
                     markeredgecolor='k', markeredgewidth=0.5)
     all_handles = (extra_handles or []) + legend_handles
