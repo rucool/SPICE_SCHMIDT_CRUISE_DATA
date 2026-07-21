@@ -561,6 +561,27 @@ ml = df_ls[df_ls['mixed_layer']].copy()
 GRID_KW = dict(color='gray', alpha=0.2, linewidth=0.5, zorder=0)
 
 
+def _legend_row_major_order(items, ncols):
+    """matplotlib fills multi-column legends column-major (top-to-bottom
+    within each column, then next column) - with a partial last row that
+    reads confusingly out of sequence (e.g. items 2 and 4 hidden in a
+    second row under columns 1-2 instead of appearing right after 1 and 3).
+    This reorders `items` so that column-major filling produces normal
+    left-to-right, top-to-bottom reading order instead."""
+    n = len(items)
+    if n == 0 or ncols <= 1:
+        return items
+    nrows = -(-n // ncols)  # ceil(n / ncols)
+    extra = n - (nrows - 1) * ncols  # first `extra` columns get a full nrows
+    col_heights = [nrows if c < extra else nrows - 1 for c in range(ncols)]
+    # existing grid cells in reading order (row-major), skipping cells that
+    # don't exist because their column is one row short
+    cells = [(r, c) for r in range(nrows) for c in range(ncols) if r < col_heights[c]]
+    cell_to_item = dict(zip(cells, items))
+    # rebuild in matplotlib's actual column-major fill order
+    return [cell_to_item[(r, c)] for c in range(ncols) for r in range(col_heights[c])]
+
+
 def add_station_markers(ax, fig, extra_handles=None):
     """Triangles on x-axis spine for reached stations; combined legend below."""
     xform = ax.get_xaxis_transform()
@@ -584,7 +605,7 @@ def add_station_markers(ax, fig, extra_handles=None):
     all_handles = (extra_handles or []) + legend_handles
     if all_handles:
         ncols = min(10, len(all_handles))
-        fig.legend(handles=all_handles, loc='lower center',
+        fig.legend(handles=_legend_row_major_order(all_handles, ncols), loc='lower center',
                    bbox_to_anchor=(0.5, 0.0), ncol=ncols,
                    frameon=True, fontsize=10, handletextpad=0.3, columnspacing=1.0)
 
