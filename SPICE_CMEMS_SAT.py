@@ -120,15 +120,27 @@ PLATFORMS = [
 ]
 ACTIVE_PLATFORMS = [p for p in PLATFORMS if p.get("enabled", True)]
 
+# How much trailing history to draw as the white track line on each map. This
+# only trims the drawn *line* and is applied relative to the date being
+# plotted (see plot_and_save_variable), never to wall-clock "now" - it never
+# hides the latest-position marker itself.
+PLATFORM_TAIL_DAYS = 7
 
-def get_platform_track(csv_name, days_back=7):
-    """Read last days_back days of a platform's positions from a CSV (time, lat, lon columns)."""
+
+def get_platform_track(csv_name):
+    """Read a platform's full position history from a CSV (time, lat, lon columns).
+
+    Intentionally does NOT window by wall-clock "now": some products (e.g.
+    weekly-updated SSS) plot a date over a week old, and a platform's last
+    reported fix can itself be stale (e.g. during a network outage). Windowing
+    here relative to "now" made the overlay silently vanish on both of those
+    plots - see plot_and_save_variable for the actual (date-relative) windowing.
+    """
     try:
         csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), csv_name)
         df = pd.read_csv(csv_path)
         df["time"] = pd.to_datetime(df["time"])
-        cutoff = pd.Timestamp.now(tz='UTC') - pd.Timedelta(days=days_back)
-        return df[df["time"] >= cutoff].sort_values("time").reset_index(drop=True)
+        return df.sort_values("time").reset_index(drop=True)
     except Exception as e:
         print(f"Warning: could not load track from {csv_name}: {e}")
         return None
@@ -202,19 +214,31 @@ def plot_and_save_variable(ds, var, bbox=TROP_WTRN_ATL_EXTENT, base_dir=FIG_BASE
                 cutoff = cutoff.tz_localize('UTC')
             plot_track = track[_times <= cutoff]
             if len(plot_track) == 0:
-                continue
+                continue  # platform had not reported any position yet as of this map's date
+
+            # Trailing line is capped to PLATFORM_TAIL_DAYS before cutoff (for
+            # readability); the latest-position marker below always uses
+            # plot_track's last row regardless, so a lagged product (e.g.
+            # weekly SSS plotting a date >7 days old) or a stale/outage-frozen
+            # fix never makes the marker disappear - only the tail shortens.
+            tail_start = cutoff - pd.Timedelta(days=PLATFORM_TAIL_DAYS)
+            tail_track = plot_track[plot_track['time'] >= tail_start]
+            if len(tail_track) == 0:
+                tail_track = plot_track.tail(1)
 
             try:
-                lons = plot_track['lon'].values.astype(float)
-                lats = plot_track['lat'].values.astype(float)
-                print(f"  {platform['name']} overlay: {len(lons)} pts, lat=[{lats[0]:.2f},{lats[-1]:.2f}], lon=[{lons[0]:.2f},{lons[-1]:.2f}]")
-                ax.plot(lons, lats, '-', color='white', lw=2.0,
+                tail_lons = tail_track['lon'].values.astype(float)
+                tail_lats = tail_track['lat'].values.astype(float)
+                last = plot_track.iloc[-1]
+                lon_last, lat_last = float(last['lon']), float(last['lat'])
+                print(f"  {platform['name']} overlay: {len(tail_lons)} tail pts, latest=({lat_last:.2f},{lon_last:.2f}) @ {last['time']}")
+                ax.plot(tail_lons, tail_lats, '-', color='white', lw=2.0,
                         transform=ccrs.PlateCarree(), zorder=50)
-                marker, = ax.plot(lons[-1], lats[-1], platform["marker"], color=platform["color"],
+                marker, = ax.plot(lon_last, lat_last, platform["marker"], color=platform["color"],
                                    markersize=platform.get("markersize", 8),
                                    markeredgecolor='k', markeredgewidth=0.8,
                                    transform=ccrs.PlateCarree(), zorder=51)
-                _t = plot_track['time'].iloc[-1]
+                _t = last['time']
                 t_str = _t.strftime('%Y-%m-%d %H:%M') if hasattr(_t, 'strftime') else str(_t)[:16]
                 legend_handles.append(marker)
                 legend_labels.append(f"{platform['name']}\n{t_str} UTC")
