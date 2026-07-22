@@ -2,7 +2,7 @@
 
 """
 Author: Lori Garzio on 7/10/2026
-Last modified: 7/14/2026
+Last modified: 7/21/2026
 Plot cross-sections of real-time glider data
 The full timeseries, last 24 hours, and last 48 hours
 can be plotted. The default is to plot the full timeseries.
@@ -31,13 +31,33 @@ def main(args):
     if ds is None:
         print(f'No dataset returned for {dsid}')
         sys.exit(1)
-    ds = ds.drop_dims(['trajectory', 'profile'])
+    try:
+        ds = ds.drop_dims(['trajectory', 'profile']) 
+    except ValueError:
+        try:
+            ds = ds.drop_dims(['timeseries']) # VOTO glider
+        except ValueError:
+            pass
     ds = ds.swap_dims({'obs': 'time'})
     ds = ds.sortby(ds.time)
     ds = cf.add_teos10_variables(ds)
     
-    deploy = ds.attrs['deployment']
-    glider = ds.platform.attrs['id']
+    try:
+        deploy = ds.attrs['deployment']
+    except KeyError:
+        deploy = ds.title  # VOTO glider
+    
+    try:
+        glider = ds.platform.attrs['id']
+    except AttributeError:
+        glider = ds.title.split('-')[0]  # VOTO glider
+
+    # define the depth variable to use for plotting
+    try:
+        ds.depth_interpolated
+        depth_var = 'depth_interpolated'
+    except AttributeError:
+        depth_var = 'depth'
 
     save_dir = os.path.join(save_dir, deploy, 'xsection', time_range)
     os.makedirs(save_dir, exist_ok=True)
@@ -89,7 +109,7 @@ def main(args):
             xargs['markersize'] = 20
             xargs['cbar_min'] = info['min']
             xargs['cbar_max'] = info['max']
-            pf.xsection(fig, ax, ds.time.values, ds.depth_interpolated.values, variable.values, **xargs)
+            pf.xsection(fig, ax, ds.time.values, ds[depth_var].values, variable.values, **xargs)
 
             sfilename = f'{deploy}_xsection_{pv}_{time_range}.png'
             sfile = os.path.join(save_dir, sfilename)

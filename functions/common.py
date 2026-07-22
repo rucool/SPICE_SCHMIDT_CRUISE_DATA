@@ -2,11 +2,36 @@
 
 """
 Author: Lori Garzio on 7/10/2026
-Last modified: 7/10/2026
+Last modified: 7/21/2026
 """
 
 import gsw
 from erddapy import ERDDAP
+import numpy as np
+import xarray as xr
+
+
+def add_profile_time(ds, profile_var='profile_num'):
+    """Add a profile_time variable to a glider dataset which is the 
+    mean time of each profile"""
+    profile_times = np.array([])
+    profiles = np.unique(ds[profile_var].values)
+    for p in profiles:
+        idx = np.where(ds[profile_var].values == p)[0]
+        pt = float(np.nanmean(ds.time.values[idx].astype('datetime64[s]').astype('int64')))
+        profile_times = np.append(profile_times, [pt] * len(idx))       
+    
+    attrs = {
+        'long_name': 'Profile Time', 
+        'standard_name': 'profile_time', 
+        'units': 'seconds since 1970-01-01 00:00:00',
+        'comment': 'Unique identifier of the profile. The profile ID is the mean profile timestamp'
+        }
+    da = xr.DataArray(profile_times, coords=ds[profile_var].coords, dims=ds[profile_var].dims,
+                                  name='profile_time', attrs=attrs)
+    
+    ds['profile_time'] = da
+    return ds
 
 
 def get_erddap_dataset(server, ds_id, variables=None, constraints=None):
