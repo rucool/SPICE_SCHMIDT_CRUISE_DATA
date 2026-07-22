@@ -2,7 +2,7 @@
 
 """
 Author: Lori Garzio on 7/15/2026
-Last modified: 7/21/2026
+Last modified: 7/22/2026
 Generate T-S diagrams of real-time glider data using Conservative
 Temperature and Absolute Salinity, colored by depth.
 The full timeseries, last 24 hours, and last 48 hours
@@ -33,13 +33,26 @@ def main(args):
     if ds is None:
         print(f'No dataset returned for {dsid}')
         sys.exit(1)
-    ds = ds.drop_dims(['trajectory', 'profile'])
-    ds = ds.swap_dims({'obs': 'profile_time'})
-    ds = ds.sortby(ds.profile_time)
+    try:
+        ds = ds.drop_dims(['trajectory', 'profile']) 
+    except ValueError:
+        try:
+            ds = ds.drop_dims(['timeseries']) # VOTO glider
+        except ValueError:
+            pass
+    ds = ds.swap_dims({'obs': 'time'})
+    ds = ds.sortby(ds.time)
     ds = cf.add_teos10_variables(ds)
     
-    deploy = ds.attrs['deployment']
-    glider = ds.platform.attrs['id']
+    try:
+        deploy = ds.attrs['deployment']
+    except KeyError:
+        deploy = ds.title  # VOTO glider
+    
+    try:
+        glider = ds.platform.attrs['id']
+    except AttributeError:
+        glider = ds.title.split('-')[0]  # VOTO glider
 
     save_dir = os.path.join(save_dir, deploy, 'TS', time_range)
     os.makedirs(save_dir, exist_ok=True)
@@ -84,11 +97,11 @@ def main(args):
 
     try:
         d = ds.depth_interpolated
-    except KeyError:
+    except AttributeError:
         print(f'Interp depth not found in dataset: {dsid}. Trying to use depth instead')
         try:
             d = ds.depth
-        except KeyError:
+        except AttributeError:
             print(f'Depth not found in dataset: {dsid}')
             sys.exit(1)
 
