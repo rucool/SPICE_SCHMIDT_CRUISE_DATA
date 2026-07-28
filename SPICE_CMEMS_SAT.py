@@ -4,6 +4,7 @@ import xarray as xr
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import cmocean.cm as cmo
@@ -37,6 +38,7 @@ PRODUCT_PLOT_VARS = {
     "sst": ["analysed_sst"],
     "ocean_color": ["CHL"],
     "sss": ["sos", "dos"],
+    "sargassum": ["nfai"],
 }
 
 
@@ -64,7 +66,11 @@ def _kelvin_to_celsius(da):
     return da
 
 
-# colormap per variable, reused regardless of which product it came from
+# colormap per variable, reused regardless of which product it came from.
+# nfai deliberately does NOT use set_under() - tried pure white for the
+# no-signal floor, but it looked too harsh/artificial against the natural
+# gradient. Just clips to cmo.algae's own palest shade instead (its default
+# behavior for values at/below vmin).
 variable_cmaps = {
     "sla": cmo.balance,
     "adt": cmo.balance,
@@ -72,6 +78,7 @@ variable_cmaps = {
     "CHL": cmo.algae,
     "sos": cmo.haline,
     "dos": cmo.dense,
+    "nfai": cmo.algae,
 }
 
 # display units per variable, after any conversion in variable_transforms below
@@ -96,7 +103,28 @@ variable_clims = {
     'CHL': (0.0, 7.0),
     'sos': (30.0, 37.0),
     'dos': (1018.0, 1025.0),
+    # nfai is heavily floored at -0.5 ("confirmed water, no algae" - 97.9%
+    # of valid pixels in a real test fetch sat at/below -0.4) with a hard
+    # jump straight to real signal - confirmed zero pixels anywhere in
+    # (-0.5, 0.02), so there's no gradient to preserve down there. vmin=0
+    # sits right at that gap (any value in the empty range works
+    # identically) paired with cmap.set_under('white') above, so the floor
+    # renders as clean white instead of blending into pale green - real
+    # detections then use the full 0-0.2 gradient (vmax tightened from the
+    # true max of 0.5, which is a rare outlier - p99.9=0.225 is a much
+    # better match for where real signal actually concentrates).
+    'nfai': (0.0, 0.2),
 }
+
+# Pending PI feedback on which view of nfai communicates better: the
+# continuous gradient above, or a simple binary detected/not-detected map
+# (real signal is so sparse and jumps so sharply from the -0.5 floor - see
+# variable_clims comment - that a binary view may read more honestly than
+# implying a smooth gradient that isn't really there). Flip to True once
+# decided; threshold matches the continuous mode's vmin (exactly where
+# real signal starts).
+NFAI_BINARY_MODE = True
+NFAI_BINARY_THRESHOLD = 0.0
 
 # contour line levels per variable - only drawn for variables listed here
 variable_contour_levels = {
@@ -179,15 +207,29 @@ def plot_and_save_variable(ds, var, bbox=TROP_WTRN_ATL_EXTENT, base_dir=FIG_BASE
         gl.top_labels = False
         gl.right_labels = False
 
+        binary_mode = var == "nfai" and NFAI_BINARY_MODE
+        if binary_mode:
+            # NaN (no-data, e.g. cloud cover) must stay NaN, not get
+            # silently folded into "no detection" - those mean different
+            # things (confirmed clear water vs. we simply don't know).
+            raw = data.values
+            plot_values = np.where(raw > NFAI_BINARY_THRESHOLD, 1.0, 0.0)
+            plot_values = np.where(np.isnan(raw), np.nan, plot_values)
+            cmap = mcolors.ListedColormap(["white", "darkgreen"])
+            vmin, vmax = -0.5, 1.5  # centers the 2 discrete cells on 0 and 1
+        else:
+            plot_values = data.values
+            cmap = variable_cmaps.get(var, "viridis")
+
         im = ax.pcolormesh(
-            ds.longitude.values, ds.latitude.values, data.values,
-            cmap=variable_cmaps.get(var, "viridis"),
+            ds.longitude.values, ds.latitude.values, plot_values,
+            cmap=cmap,
             vmin=vmin, vmax=vmax,
             transform=ccrs.PlateCarree(),
         )
 
         levels = variable_contour_levels.get(var)
-        if levels is not None:
+        if levels is not None and not binary_mode:
             cs = ax.contour(
                 ds.longitude.values, ds.latitude.values, data.values,
                 levels=levels, colors='k', linewidths=0.5,
@@ -232,7 +274,12 @@ def plot_and_save_variable(ds, var, bbox=TROP_WTRN_ATL_EXTENT, base_dir=FIG_BASE
                 last = plot_track.iloc[-1]
                 lon_last, lat_last = float(last['lon']), float(last['lat'])
                 print(f"  {platform['name']} overlay: {len(tail_lons)} tail pts, latest=({lat_last:.2f},{lon_last:.2f}) @ {last['time']}")
-                ax.plot(tail_lons, tail_lats, '-', color='white', lw=2.0,
+                # White works for every other product (all have a colored
+                # pcolormesh fill behind it), but nfai's binary mode renders
+                # "no detection" as plain white, which would make a white
+                # tail invisible - use black there instead.
+                tail_color = 'black' if binary_mode else 'white'
+                ax.plot(tail_lons, tail_lats, '-', color=tail_color, lw=2.0,
                         transform=ccrs.PlateCarree(), zorder=50)
                 marker, = ax.plot(lon_last, lat_last, platform["marker"], color=platform["color"],
                                    markersize=platform.get("markersize", 8),
@@ -251,7 +298,12 @@ def plot_and_save_variable(ds, var, bbox=TROP_WTRN_ATL_EXTENT, base_dir=FIG_BASE
 
         unit = variable_units.get(var, "")
         cbar_label = f"{var} ({unit})" if unit else var
-        fig.colorbar(im, ax=ax, orientation="horizontal", label=cbar_label, shrink=0.8, pad=0.08)
+        if binary_mode:
+            cbar = fig.colorbar(im, ax=ax, orientation="horizontal", label=cbar_label, shrink=0.8, pad=0.08,
+                                 ticks=[0, 1])
+            cbar.ax.set_xticklabels(["no detection", "detected"])
+        else:
+            fig.colorbar(im, ax=ax, orientation="horizontal", label=cbar_label, shrink=0.8, pad=0.08)
         ax.set_title(f"{var} {date:%Y-%m-%d %H:%M}")
         # cartopy 0.25.0 bug workaround: GeoAxes hides its xaxis, which makes
         # matplotlib's automatic title-positioning logic compute an infinite

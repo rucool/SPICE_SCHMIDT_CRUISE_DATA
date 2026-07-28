@@ -58,6 +58,19 @@ SATELLITE_PRODUCTS = {
         "plot_vars": ["sos", "dos"],
         "max_lookback_days": 18,
     },
+    # Sargassum floating algae index (CLS, product
+    # MULTIOBS_GLO_BGC_SURFACE_NRT_015_016) - rolling 7-day-mean, updated
+    # daily (confirmed via test fetch: 18 distinct daily timestamps came
+    # back, not a sparse weekly cadence). flag_nfai (the other variable in
+    # this dataset) is just a binary 0/1 quality flag, not a value worth
+    # plotting - only nfai itself is pulled.
+    "sargassum": {
+        "source": "copernicus",
+        "dataset_id": "cmems_obs-mob_glo_bgc_nrt_mr_multi_P7D-m",
+        "variables": ["nfai"],
+        "plot_vars": ["nfai"],
+        "max_lookback_days": 18,
+    },
     # TODO: PACE OCI - not on ERDDAP or CMEMS, would need NASA Earthdata/earthaccess
     "ocean_color_pace": {
         "source": "todo",
