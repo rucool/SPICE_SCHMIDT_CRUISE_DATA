@@ -44,8 +44,17 @@ PRODUCT_PLOT_VARS = {
 
 def load_latest(product_name, base_dir=CMEMS_BASE_DIR):
     """Open the most recently downloaded NetCDF for a product. cmems_download.py
-    is what actually fetches the data - this just reads back what it wrote."""
+    is what actually fetches the data - this just reads back what it wrote.
+    Returns None (not an error) if no files exist yet - e.g. a newly added
+    product whose download hasn't run yet, or a one-off missed fetch cycle -
+    so one product's temporarily-missing data doesn't crash every other
+    product's figures too (confirmed this could happen: sargassum's first
+    cmems_download run on admin hadn't completed yet when SPICE_CMEMS_SAT.py
+    ran, taking down sla/sst/CHL/sos/dos plotting along with it)."""
     files = sorted(glob.glob(os.path.join(base_dir, product_name, "*.nc")), key=os.path.getmtime)
+    if not files:
+        print(f"Warning: no downloaded files found for {product_name} in {base_dir} - skipping")
+        return None
     return xr.open_dataset(files[-1])
 
 
@@ -340,6 +349,8 @@ for platform in ACTIVE_PLATFORMS:
 saved_paths = []
 for product_name, plot_vars in PRODUCT_PLOT_VARS.items():
     ds = daily_data[product_name]
+    if ds is None:
+        continue
     for var in plot_vars:
         saved_paths.extend(plot_and_save_variable(ds, var, platform_tracks=platform_tracks, run_ts=run_ts))
 
