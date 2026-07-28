@@ -196,6 +196,21 @@ def plot_and_save_variable(ds, var, bbox=TROP_WTRN_ATL_EXTENT, base_dir=FIG_BASE
             data = data.isel(depth=0)
         if var in variable_transforms:
             data = variable_transforms[var](data)
+
+        # Copernicus can auto-clamp a partially out-of-range request instead
+        # of erroring (see the SATELLITE_PRODUCTS registry comment in
+        # cmems_download.py) - but for some products this still returns a
+        # placeholder time step for a day beyond the product's real
+        # coverage, filled entirely with NaN, rather than omitting that day.
+        # Without this check, the day still gets a dated folder and a saved
+        # PNG - coastlines/gridlines/title all draw fine since they don't
+        # depend on the data - but pcolormesh renders nothing, producing a
+        # blank-looking figure that's easy to mistake for a real (empty)
+        # observation instead of "no data existed for this day at all".
+        if bool(np.all(np.isnan(data.values))):
+            print(f"Warning: {var} on {date:%Y-%m-%d} is all-NaN (no real data for this day) - skipping")
+            continue
+
         vmin, vmax = variable_clims.get(var, (None, None))
         if vmin is None:
             vmin, vmax = percentile(data)
