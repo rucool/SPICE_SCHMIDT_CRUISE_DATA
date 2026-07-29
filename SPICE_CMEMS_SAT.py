@@ -135,6 +135,19 @@ variable_clims = {
 NFAI_BINARY_MODE = True
 NFAI_BINARY_THRESHOLD = 0.0
 
+# Toggle: plot CHL on a log10 color scale instead of the default linear
+# 0-7 mg/m^3 scale (variable_clims['CHL'] above). Chlorophyll concentration
+# commonly spans 2+ orders of magnitude in one map (open-ocean vs. coastal/
+# river-plume waters), which a linear scale can wash out - most of the
+# range ends up looking like one flat low color. Off by default; flip to
+# True to test. A log scale needs a strictly positive vmin (0 is
+# undefined), so CHL_LOG_CLIM is separate from variable_clims['CHL']
+# rather than reusing its (0.0, 7.0) - 0.03-10 mg/m^3 is a standard
+# ocean-color log range that still brackets the linear scale's real data.
+CHL_LOG_SCALE = True
+CHL_LOG_CLIM = (0.03, 10.0)
+CHL_LOG_TICKS = [0.03, 0.1, 0.3, 1, 3, 10]
+
 # contour line levels per variable - only drawn for variables listed here
 variable_contour_levels = {
     'sla': np.arange(-0.2, 0.21, 0.1),
@@ -216,6 +229,10 @@ def plot_and_save_variable(ds, var, bbox=TROP_WTRN_ATL_EXTENT, base_dir=FIG_BASE
         if vmin is None:
             vmin, vmax = percentile(data)
 
+        chl_log_mode = var == "CHL" and CHL_LOG_SCALE
+        if chl_log_mode:
+            vmin, vmax = CHL_LOG_CLIM
+
         fig, ax = plt.subplots(figsize=(8, 6), subplot_kw={"projection": ccrs.Mercator()})
         ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
 
@@ -246,11 +263,22 @@ def plot_and_save_variable(ds, var, bbox=TROP_WTRN_ATL_EXTENT, base_dir=FIG_BASE
             plot_values = data.values
             cmap = variable_cmaps.get(var, "viridis")
 
+        pcolormesh_kwargs = {"cmap": cmap, "transform": ccrs.PlateCarree()}
+        if chl_log_mode:
+            # LogNorm instead of vmin/vmax - the two are mutually exclusive
+            # in pcolormesh. Values <=0 (shouldn't occur for a real
+            # concentration, but a defensive corner case) fall outside a
+            # log norm's domain and are masked/left transparent by
+            # matplotlib rather than erroring, same as existing NaN/cloud
+            # pixels.
+            pcolormesh_kwargs["norm"] = mcolors.LogNorm(vmin=vmin, vmax=vmax)
+        else:
+            pcolormesh_kwargs["vmin"] = vmin
+            pcolormesh_kwargs["vmax"] = vmax
+
         im = ax.pcolormesh(
             ds.longitude.values, ds.latitude.values, plot_values,
-            cmap=cmap,
-            vmin=vmin, vmax=vmax,
-            transform=ccrs.PlateCarree(),
+            **pcolormesh_kwargs,
         )
 
         levels = variable_contour_levels.get(var)
@@ -327,6 +355,10 @@ def plot_and_save_variable(ds, var, bbox=TROP_WTRN_ATL_EXTENT, base_dir=FIG_BASE
             cbar = fig.colorbar(im, ax=ax, orientation="horizontal", label=cbar_label, shrink=0.8, pad=0.08,
                                  ticks=[0, 1])
             cbar.ax.set_xticklabels(["no detection", "detected"])
+        elif chl_log_mode:
+            cbar = fig.colorbar(im, ax=ax, orientation="horizontal", label=f"{cbar_label} (log scale)",
+                                 shrink=0.8, pad=0.08, ticks=CHL_LOG_TICKS)
+            cbar.ax.set_xticklabels([str(t) for t in CHL_LOG_TICKS])
         else:
             fig.colorbar(im, ax=ax, orientation="horizontal", label=cbar_label, shrink=0.8, pad=0.08)
         ax.set_title(f"{var} {date:%Y-%m-%d %H:%M}")
