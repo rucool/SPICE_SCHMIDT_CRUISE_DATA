@@ -139,6 +139,7 @@ NFAI_BINARY_THRESHOLD = 0.0
 variable_contour_levels = {
     'sla': np.arange(-0.2, 0.21, 0.1),
     'analysed_sst': np.arange(25.0, 29.1, 1.0),
+    'CHL': [0.1, 1, 5],
     'sos': np.arange(30.0, 37.1, 0.5),
     'dos': np.arange(1018.0, 1025.1, 0.5),
 }
