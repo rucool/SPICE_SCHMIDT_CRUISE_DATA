@@ -1,0 +1,63 @@
+# Config for eddy_12N_forecast.py - which eddies count as "in play" for the
+# 12N survey line and where that line sits. Edit values here to adjust
+# without touching code.
+
+# Bounding box used to select which active eddies get reported - tighter
+# than the full pipeline bbox (TROP_WTRN_ATL_EXTENT in
+# eddy_trajectory_download.py/eddy_trajectory_plot.py), since this report is
+# specifically about eddies near the survey corridor, not the whole
+# satellite-figure domain. Does NOT change eddy_trajectory_download.py's or
+# eddy_trajectory_plot.py's own subsetting/plotting - both keep using the
+# wider TROP_WTRN_ATL_EXTENT untouched.
+bbox:
+  lon_min: -60
+  lon_max: -43
+  lat_min: 7
+  lat_max: 14
+
+# Latitude of the survey line eddies are forecast to reach. Matches
+# configs/cruise_stations.yml, whose stations all sit at lat 12.0.
+target_lat: 12.0
+
+# km per degree of latitude, used to convert the meridional (north-south)
+# distance to the target line into km. 111.195 km/deg is the standard
+# WGS84-ish mean value (varies <1% with latitude, close enough for a
+# forecast built on a rolling eddy-tracker product to begin with).
+km_per_deg_lat: 111.195
+
+# Which columns appear in the output table, and in what order. Add, remove,
+# or reorder freely - no code changes needed. Available field names (see
+# AVAILABLE_FIELDS in eddy_12N_forecast.py for the full list with units):
+#   eddy_id, polarity, latitude, longitude, last_obs_date, radius_km,
+#   effective_radius_km, amplitude_m, rotational_speed_m_s,
+#   effective_area_km2, translation_speed_m_s, meridional_speed_m_s,
+#   distance_to_12N_km, eta_to_12N_hours, eta_to_12N_days, status,
+#   plus dist_<platform>_rt_km AND dist_<platform>_lag_km per ENABLED entry
+#   in eddy_12N_forecast.py's PLATFORMS list (currently dist_ru29_rt_km,
+#   dist_ru29_lag_km, dist_falkor_rt_km, dist_falkor_lag_km):
+#     _rt  = distance to the platform's true real-time latest position
+#     _lag = distance to the platform's position as of the eddy data's own
+#            (often lagged) date - matches what eddy_trajectory_plot.py's
+#            map marker shows, so this is the "consistent with the map"
+#            number, while _rt is the "right now" number.
+#   A platform that's currently disabled there (e.g. Falkor (too), off
+#   until the official cruise starts) has no fields to select yet - naming
+#   one here just gets skipped with a warning until it's re-enabled, at
+#   which point it starts working with no edit needed here. An
+#   unrecognized name is skipped the same way, warning printed at run time
+#   rather than crashing the whole report.
+columns:
+  - eddy_id
+  - polarity
+  - latitude
+  - longitude
+  - radius_km
+  - translation_speed_m_s
+  - distance_to_12N_km
+  - eta_to_12N_hours
+  - eta_to_12N_days
+  - status
+  - dist_ru29_rt_km
+  - dist_ru29_lag_km
+  - dist_falkor_rt_km
+  - dist_falkor_lag_km
