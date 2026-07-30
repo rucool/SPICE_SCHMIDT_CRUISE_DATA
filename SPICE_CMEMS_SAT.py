@@ -356,7 +356,7 @@ def plot_and_save_variable(ds, var, bbox=TROP_WTRN_ATL_EXTENT, base_dir=FIG_BASE
                                  ticks=[0, 1])
             cbar.ax.set_xticklabels(["no detection", "detected"])
         elif chl_log_mode:
-            cbar = fig.colorbar(im, ax=ax, orientation="horizontal", label=f"{cbar_label} (log scale)",
+            cbar = fig.colorbar(im, ax=ax, orientation="horizontal", label=cbar_label,
                                  shrink=0.8, pad=0.08, ticks=CHL_LOG_TICKS)
             cbar.ax.set_xticklabels([str(t) for t in CHL_LOG_TICKS])
         else:
