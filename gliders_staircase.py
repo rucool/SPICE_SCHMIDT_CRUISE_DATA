@@ -109,9 +109,22 @@ ds_id = args.deployment
 # Short glider name for folder/file prefixes, e.g. 'ru29-20260623T2102-profile-sci-rt' -> 'ru29'
 glider = ds_id.split('-')[0]
 
+# VOTO's ERDDAP (voiceoftheocean.org) uses different column names than
+# Rutgers' slocum-data ERDDAP this script was originally written against -
+# confirmed directly against VOTO's own /info/.../index.csv and a live test
+# fetch: profile_id -> profile_num (same per-profile grouping key, different
+# name), and profile_time doesn't exist there at all (Rutgers precomputes it;
+# VOTO doesn't) so it has to be derived below rather than fetched. Detected
+# from the already-required -server arg - no separate CLI flag needed, since
+# picking the wrong ERDDAP instance for a deployment would already break the
+# fetch regardless.
+IS_VOTO = 'voiceoftheocean' in args.server.lower()
 
 ## Load flight data
-variables = ['time','profile_time','profile_id','depth', 'latitude', 'longitude', 'salinity','temperature','pressure']
+if IS_VOTO:
+    variables = ['time', 'profile_num', 'depth', 'latitude', 'longitude', 'salinity', 'temperature', 'pressure']
+else:
+    variables = ['time','profile_time','profile_id','depth', 'latitude', 'longitude', 'salinity','temperature','pressure']
 gdf = get_erddap_dataset(ds_id, server=args.server, variables = variables, filetype='dataframe')
 print(f"ERDDAP returned shape={gdf.shape}, columns={list(gdf.columns)}")
 if len(gdf.columns) != len(variables):
@@ -124,9 +137,25 @@ if len(gdf.columns) != len(variables):
 gdf.columns = variables
 gdf=gdf.rename(columns={'latitude':'lat','longitude':'lon'})
 gdf['time']=pd.to_datetime(gdf.time)
-gdf['profile_time']=pd.to_datetime(gdf.profile_time)
+
+# Normalize immediately so every downstream reference (groupbys, distance
+# mapping, staircase detection, station logic, all 7 figure blocks) can keep
+# assuming plain 'profile_id'/'profile_time' columns regardless of which
+# server this came from - nothing past this point needs to know about VOTO.
+if IS_VOTO:
+    gdf = gdf.rename(columns={'profile_num': 'profile_id'})
+    # profile_time isn't fetched (doesn't exist on VOTO's ERDDAP) - derived
+    # as the mean observation time per profile, same definition
+    # functions/common.py's add_profile_time() uses for the xarray-based
+    # real-time glider plots (verified this matches a manual .mean() check
+    # exactly against real VOTO data), just reimplemented in pandas here
+    # since this script's whole pipeline is dataframe-based, not xarray.
+    gdf['profile_time'] = gdf.groupby('profile_id')['time'].transform('mean')
+else:
+    gdf['profile_time']=pd.to_datetime(gdf.profile_time)
+
 gdf=gdf.set_index('time')
-print('RU29 data retrieved')
+print(f'{glider} data retrieved')
 
 
 def convert_per_profile(group):
@@ -321,8 +350,14 @@ _cutoff = _base_date + pd.Timedelta(hours=_h, minutes=_m)
 gdf_sorted = gdf_sorted[pd.to_datetime(gdf_sorted["profile_time"]) <= _cutoff]
 print(f"{'Backfill' if _target else 'Live'} mode: {len(gdf_sorted['profile_id'].unique())} profiles up to {_cutoff}")
 
-# pick the deepest profile available
-max_p_per_profile = gdf_sorted.groupby('profile_id')['pressure'].max()
+# Pick the profile with the deepest VALID data, not just the deepest raw
+# pressure reading - a profile can dive deep but lose most of its CT/SA to
+# a mid-dive salinity/conductivity dropout (seen on real VOTO glider data),
+# in which case picking by raw pressure alone can select a profile with
+# almost no valid data left once the dropna below runs, leaving too narrow
+# a range to regrid (empty p_reg, crashes on p_reg[0] just below).
+valid_for_test = gdf_sorted.dropna(subset=['pressure', 'conservative_temperature', 'absolute_salinity'])
+max_p_per_profile = valid_for_test.groupby('profile_id')['pressure'].max()
 test_pid = max_p_per_profile.idxmax()
 test_grp = gdf_sorted[gdf_sorted['profile_id'] == test_pid].copy()
 test_grp = test_grp.drop_duplicates(subset='pressure')
@@ -592,9 +627,39 @@ def add_station_markers(ax, fig, extra_handles=None):
         max_ncols = 10
         nrows = -(-len(all_handles) // max_ncols)  # ceil
         ncols = -(-len(all_handles) // nrows)  # smallest ncols that still fits in nrows - avoids a mostly-empty trailing row
-        fig.legend(handles=_legend_row_major_order(all_handles, ncols), loc='lower center',
-                   bbox_to_anchor=(0.5, 0.0), ncol=ncols,
-                   frameon=True, fontsize=10, handletextpad=0.3, columnspacing=1.0)
+        leg = fig.legend(handles=_legend_row_major_order(all_handles, ncols), loc='lower center',
+                          bbox_to_anchor=(0.5, 0.0), ncol=ncols,
+                          frameon=True, fontsize=10, handletextpad=0.3, columnspacing=1.0)
+
+        # Grow the bottom margin so the x-axis label clears the legend -
+        # self-correcting via directly measured pixel gap rather than a
+        # guessed constant (two earlier attempts at guessing a fixed-
+        # fraction buffer both underestimated the real buffer needed - a
+        # legend's top edge in figure-fraction terms is NOT the same as
+        # "how much bottom margin clears it", since the x-axis label
+        # itself needs its own full height below the axes edge too, not
+        # just a small gap above the legend). This measures
+        # ax.xaxis.label's actual bottom edge vs. the legend's actual top
+        # edge in pixels and shifts `bottom` by exactly the deficit -
+        # exact because the label's pixel position moves in lockstep with
+        # `bottom` at a 1:1 rate (delta_bottom * fig_height_px), while the
+        # legend's position doesn't move at all (bbox_to_anchor=(0.5, 0.0)
+        # anchors it to figure y=0 regardless of the axes' bottom margin).
+        # A couple of iterations lets it converge if the first shift was
+        # slightly off.
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        min_gap_px = 12
+        for _ in range(3):
+            xlabel_y0 = ax.xaxis.label.get_window_extent(renderer).y0
+            legend_y1 = leg.get_window_extent(renderer).y1
+            gap_px = xlabel_y0 - legend_y1
+            if gap_px >= min_gap_px:
+                break
+            fig_height_px = fig.get_size_inches()[1] * fig.dpi
+            new_bottom = fig.subplotpars.bottom + (min_gap_px - gap_px) / fig_height_px
+            fig.subplots_adjust(bottom=new_bottom)
+            fig.canvas.draw()
 
 
 # Figure 1: Conservative Temperature
