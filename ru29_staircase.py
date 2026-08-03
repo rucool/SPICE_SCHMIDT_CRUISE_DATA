@@ -11,7 +11,6 @@ import seawater
 import datetime as dt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
-import cool_maps.plot as cplt
 import cmocean.cm as cmo
 import os
 from itertools import cycle
@@ -425,6 +424,84 @@ else:
     x_col, x_label = 'dist_km', 'Distance along track (km)'
     print(f"Distance mode: median lat of last {ZONAL_CHECK_N_PROFILES} profiles={_recent_lat:.3f} outside zonal band [{ZONAL_LAT_MIN}, {ZONAL_LAT_MAX}] - plotting vs distance along track")
 
+# Turnaround detection (only meaningful in ZONAL_MODE): once ru29 has run
+# far enough in one direction along the 12N line and then reverses, the 7
+# figures below split into two stacked panels (outbound above, return
+# below) instead of letting both legs overplot on the same longitude
+# strip. Scoped to the FIRST turnaround only - repeat zonal surveys often
+# do multiple round trips, but N-leg support is out of scope for now; a
+# second reversal is flagged with a loud warning below rather than
+# silently mixed into the return-leg panel.
+def _detect_reversal(smoothed, direction):
+    """Returns (extreme_idx, pullback) for a smoothed longitude series
+    presumed to be traveling in `direction` (+1 = east/increasing lon,
+    -1 = west/decreasing lon). `pullback` is how far the series has fallen
+    back from its extreme in that direction - positive means it's pulling
+    back (a candidate reversal), independent of which direction that is."""
+    extreme_idx = smoothed.idxmax() if direction == 1 else smoothed.idxmin()
+    pullback = direction * (smoothed.loc[extreme_idx] - smoothed.iloc[-1])
+    return extreme_idx, pullback
+
+
+TURNAROUND_MIN_REVERSAL_DEG = PLOT_VARS_CFG['turnaround']['min_reversal_deg']
+TURNAROUND_DETECTED = False
+turnaround_time = None
+if ZONAL_MODE:
+    _zonal = (prof_coords[(prof_coords['lat'] >= ZONAL_LAT_MIN) & (prof_coords['lat'] <= ZONAL_LAT_MAX)]
+              .sort_values('profile_time').reset_index(drop=True))
+    if len(_zonal) >= 2 * ZONAL_CHECK_N_PROFILES:
+        # Same smoothing window as the ZONAL_MODE check above, for
+        # consistency - not a new magic number.
+        _smoothed = _zonal['lon'].rolling(ZONAL_CHECK_N_PROFILES, min_periods=1, center=True).median()
+        _direction = 1 if _smoothed.iloc[-1] >= _smoothed.iloc[0] else -1  # overall travel so far: +1 east, -1 west
+        _extreme_idx, _pullback = _detect_reversal(_smoothed, _direction)
+        if _pullback >= TURNAROUND_MIN_REVERSAL_DEG:
+            TURNAROUND_DETECTED = True
+            turnaround_time = _zonal.loc[_extreme_idx, 'profile_time']
+            print(f"Turnaround detected: extreme lon reached at {turnaround_time} (pulled back "
+                  f"{_pullback:.3f}\u00b0 since, >= {TURNAROUND_MIN_REVERSAL_DEG}\u00b0 threshold) - "
+                  f"splitting zonal figures into outbound/return panels")
+
+            # Second-reversal check: same test applied to the profiles
+            # AFTER the confirmed turnaround, now traveling in the
+            # opposite (-_direction) sense. Only a warning - this script
+            # doesn't attempt to split a third leg out.
+            _post = _zonal[_zonal['profile_time'] > turnaround_time].reset_index(drop=True)
+            if len(_post) >= 2 * ZONAL_CHECK_N_PROFILES:
+                _post_smoothed = _post['lon'].rolling(ZONAL_CHECK_N_PROFILES, min_periods=1, center=True).median()
+                _post_extreme_idx, _post_pullback = _detect_reversal(_post_smoothed, -_direction)
+                if _post_pullback >= TURNAROUND_MIN_REVERSAL_DEG:
+                    _second_turnaround_time = _post.loc[_post_extreme_idx, 'profile_time']
+                    print(f"WARNING: a SECOND reversal was detected at {_second_turnaround_time} - "
+                          f"this script only splits on the first turnaround, so the return/westbound "
+                          f"panel below will mix both legs from that point on. Revisit N-leg support "
+                          f"if this becomes a regular pattern.")
+
+# profile_id -> bool map (True = outbound/before the turnaround) used to
+# split every dataframe below into the two panels once TURNAROUND_DETECTED.
+# All of gdf_dist/ml/df_ls/df_results/all_profs/profile_stats trace back to
+# prof_coords via profile_id (same join key dist_map/lon_map already use
+# above), so one map covers all of them. Profiles with no turnaround yet
+# (or when TURNAROUND_DETECTED is False) all map to True/outbound, which is
+# harmless since the split path is never taken in that case. Handled as an
+# explicit branch rather than a `turnaround_time or <sentinel>` fallback -
+# profile_time is tz-aware (UTC) here, and comparing it against a tz-naive
+# sentinel like pd.Timestamp.max raises rather than just working.
+_prof_by_id = prof_coords.set_index('profile_id')['profile_time']
+if turnaround_time is not None:
+    is_outbound = _prof_by_id <= turnaround_time
+else:
+    is_outbound = pd.Series(True, index=_prof_by_id.index)
+
+
+def split_outbound_return(df, id_col='profile_id'):
+    """Splits df into (outbound, return) using the is_outbound map above.
+    Rows whose profile_id isn't in the map (shouldn't normally happen) are
+    treated as outbound rather than silently dropped."""
+    mask = df[id_col].map(is_outbound).fillna(True)
+    return df.loc[mask].copy(), df.loc[~mask].copy()
+
+
 if not _target:  # do not overwrite current track CSV during backfill
     prof_coords[["lat", "lon", "profile_time"]].rename(columns={"profile_time": "time"}).to_csv(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "ru29_latest_track.csv"), index=False)
@@ -587,27 +664,33 @@ def _legend_row_major_order(items, ncols):
     return [cell_to_item[(r, c)] for c in range(ncols) for r in range(col_heights[c])]
 
 
-def add_station_markers(ax, fig, extra_handles=None):
-    """Triangles on x-axis spine for reached stations; combined legend below."""
-    xform = ax.get_xaxis_transform()
-    for s in stations:
-        if not s['reached']:
-            continue
-        if s.get('argo'):
-            ax.plot(s['x_plot'], 0, marker='*',
-                    color=ARGO_COLOR, markersize=16,
-                    transform=xform, clip_on=False, zorder=6,
-                    markeredgecolor='k', markeredgewidth=0.5)
-        elif s.get('drifter'):
-            ax.plot(s['x_plot'], 0, marker='D',
-                    color=DRIFTER_COLOR, markersize=13,
-                    transform=xform, clip_on=False, zorder=6,
-                    markeredgecolor='k', markeredgewidth=0.5)
-        else:
-            ax.plot(s['x_plot'], 0, marker=s['marker'],
-                    color=s['color'], markersize=14,
-                    transform=xform, clip_on=False, zorder=6,
-                    markeredgecolor='k', markeredgewidth=0.8)
+def add_station_markers(axes, fig, extra_handles=None):
+    """Triangles on x-axis spine for reached stations, drawn on every ax in
+    `axes` (a single Axes, or a list/tuple of them for the split-panel
+    case); one combined legend below the whole figure regardless of how
+    many axes were drawn on."""
+    if not isinstance(axes, (list, tuple)):
+        axes = [axes]
+    for ax in axes:
+        xform = ax.get_xaxis_transform()
+        for s in stations:
+            if not s['reached']:
+                continue
+            if s.get('argo'):
+                ax.plot(s['x_plot'], 0, marker='*',
+                        color=ARGO_COLOR, markersize=16,
+                        transform=xform, clip_on=False, zorder=6,
+                        markeredgecolor='k', markeredgewidth=0.5)
+            elif s.get('drifter'):
+                ax.plot(s['x_plot'], 0, marker='D',
+                        color=DRIFTER_COLOR, markersize=13,
+                        transform=xform, clip_on=False, zorder=6,
+                        markeredgecolor='k', markeredgewidth=0.5)
+            else:
+                ax.plot(s['x_plot'], 0, marker=s['marker'],
+                        color=s['color'], markersize=14,
+                        transform=xform, clip_on=False, zorder=6,
+                        markeredgecolor='k', markeredgewidth=0.8)
     all_handles = (extra_handles or []) + legend_handles
     if all_handles:
         max_ncols = 10
@@ -619,68 +702,126 @@ def add_station_markers(ax, fig, extra_handles=None):
 
 
 # Figure 1: Conservative Temperature
-fig, ax = plt.subplots(figsize=(16, 5))
-fig.subplots_adjust(bottom=0.22)
+def _plot_ct(ax, gdf_sub, ml_sub, vmin=None, vmax=None):
+    sc = ax.scatter(
+        gdf_sub[x_col], gdf_sub['pressure'],
+        c=gdf_sub['conservative_temperature'],
+        cmap=cmo.thermal, vmin=vmin, vmax=vmax, s=0.5, rasterized=True, zorder=1
+    )
+    for _, row in ml_sub.iterrows():
+        ax.plot([row[x_col]] * 2, [row['p_start'], row['p_end']],
+                color='white', lw=3.2, alpha=0.95, zorder=3,
+                solid_capstyle='round', path_effects=[pe.Stroke(linewidth=4.4, foreground='black'), pe.Normal()])
+    ax.invert_yaxis()
+    ax.grid(True, **GRID_KW)
+    ax.set_ylabel('Pressure (dbar)')
+    ax.set_xlabel(x_label)
+    return sc
 
-sc = ax.scatter(
-    gdf_dist[x_col], gdf_dist['pressure'],
-    c=gdf_dist['conservative_temperature'],
-    cmap=cmo.thermal, s=0.5, rasterized=True, zorder=1
-)
-for _, row in ml.iterrows():
-    ax.plot([row[x_col]] * 2, [row['p_start'], row['p_end']],
-            color='white', lw=3.2, alpha=0.95, zorder=3,
-            solid_capstyle='round', path_effects=[pe.Stroke(linewidth=4.4, foreground='black'), pe.Normal()])
-ax.invert_yaxis()
-ax.grid(True, **GRID_KW)
-ax.set_ylabel('Pressure (dbar)')
-ax.set_xlabel(x_label)
-cb = plt.colorbar(sc, ax=ax, pad=0.01)
-cb.set_label('CT (°C)')
-ax.set_title(f"{title_datetime_str}\nConservative Temperature  |  white/black = staircase mixed layers", loc='left')
-add_station_markers(ax, fig)
+
+if TURNAROUND_DETECTED:
+    gdf_out, gdf_ret = split_outbound_return(gdf_dist)
+    ml_out, ml_ret = split_outbound_return(ml)
+    ct_vmin, ct_vmax = gdf_dist['conservative_temperature'].min(), gdf_dist['conservative_temperature'].max()
+    fig, (ax_out, ax_ret) = plt.subplots(2, 1, figsize=(16, 10), sharex=True)
+    fig.subplots_adjust(bottom=0.14, hspace=0.35)
+    sc = _plot_ct(ax_out, gdf_out, ml_out, ct_vmin, ct_vmax)
+    _plot_ct(ax_ret, gdf_ret, ml_ret, ct_vmin, ct_vmax)
+    ax_out.set_title(f"{title_datetime_str}\nConservative Temperature - Eastbound leg  |  white/black = staircase mixed layers", loc='left')
+    ax_ret.set_title("Westbound leg (return)", loc='left')
+    cb = fig.colorbar(sc, ax=[ax_out, ax_ret], pad=0.01)
+    cb.set_label('CT (°C)')
+    add_station_markers([ax_out, ax_ret], fig)
+else:
+    fig, ax = plt.subplots(figsize=(16, 5))
+    fig.subplots_adjust(bottom=0.22)
+    sc = _plot_ct(ax, gdf_dist, ml)
+    ax.set_title(f"{title_datetime_str}\nConservative Temperature  |  white/black = staircase mixed layers", loc='left')
+    cb = plt.colorbar(sc, ax=ax, pad=0.01)
+    cb.set_label('CT (°C)')
+    add_station_markers(ax, fig)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_CT', f'ru29_CT_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
 
 
 #  Figure 2: Mixed-layer height 
-fig, ax = plt.subplots(figsize=(16, 5))
-fig.subplots_adjust(bottom=0.22)
+def _plot_ml_height(ax, ml_sub):
+    sc = None
+    if not ml_sub.empty:
+        sc = ax.scatter(ml_sub[x_col], ml_sub['p'], c=ml_sub['layer_height'],
+                        cmap=cmo.matter, s=35, zorder=2, vmin=PLOT_VARS_CFG['ml_height']['vmin'], vmax=PLOT_VARS_CFG['ml_height']['vmax'],
+                        edgecolors='k', linewidths=0.3)
+    ax.invert_yaxis()
+    ax.grid(True, **GRID_KW)
+    ax.set_ylabel('Pressure (dbar)')
+    ax.set_xlabel(x_label)
+    return sc
 
-if not ml.empty:
-    sc = ax.scatter(ml[x_col], ml['p'], c=ml['layer_height'],
-                    cmap=cmo.matter, s=35, zorder=2, vmin=PLOT_VARS_CFG['ml_height']['vmin'], vmax=PLOT_VARS_CFG['ml_height']['vmax'],
-                    edgecolors='k', linewidths=0.3)
-    cb = plt.colorbar(sc, ax=ax, pad=0.01, extend='max')
-    cb.set_label('Layer height (dbar)')
-ax.invert_yaxis()
-ax.grid(True, **GRID_KW)
-ax.set_ylabel('Pressure (dbar)')
-ax.set_xlabel(x_label)
-ax.set_title(f"{title_datetime_str}\nMixed-layer height", loc='left')
-add_station_markers(ax, fig)
+
+if TURNAROUND_DETECTED:
+    ml_out, ml_ret = split_outbound_return(ml)
+    fig, (ax_out, ax_ret) = plt.subplots(2, 1, figsize=(16, 10), sharex=True)
+    fig.subplots_adjust(bottom=0.14, hspace=0.35)
+    sc_out = _plot_ml_height(ax_out, ml_out)
+    sc_ret = _plot_ml_height(ax_ret, ml_ret)
+    ax_out.set_title(f"{title_datetime_str}\nMixed-layer height - Eastbound leg", loc='left')
+    ax_ret.set_title("Westbound leg (return)", loc='left')
+    sc_for_cb = sc_out if sc_out is not None else sc_ret
+    if sc_for_cb is not None:
+        cb = fig.colorbar(sc_for_cb, ax=[ax_out, ax_ret], pad=0.01, extend='max')
+        cb.set_label('Layer height (dbar)')
+    add_station_markers([ax_out, ax_ret], fig)
+else:
+    fig, ax = plt.subplots(figsize=(16, 5))
+    fig.subplots_adjust(bottom=0.22)
+    sc = _plot_ml_height(ax, ml)
+    ax.set_title(f"{title_datetime_str}\nMixed-layer height", loc='left')
+    if sc is not None:
+        cb = plt.colorbar(sc, ax=ax, pad=0.01, extend='max')
+        cb.set_label('Layer height (dbar)')
+    add_station_markers(ax, fig)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_ml_height', f'ru29_ml_height_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
 
 
 # Figure 3: Turner angle 
-fig, ax = plt.subplots(figsize=(16, 5))
-fig.subplots_adjust(bottom=0.22)
+def _plot_turner(ax, df_ls_sub):
+    sc = None
+    if not df_ls_sub.empty:
+        sc = ax.scatter(df_ls_sub[x_col], df_ls_sub['p'], c=df_ls_sub['turner_ang'],
+                        cmap='RdBu_r', vmin=PLOT_VARS_CFG['turner']['vmin'], vmax=PLOT_VARS_CFG['turner']['vmax'], s=35, zorder=2,
+                        edgecolors='k', linewidths=0.3)
+    ax.invert_yaxis()
+    ax.grid(True, **GRID_KW)
+    ax.set_ylabel('Pressure (dbar)')
+    ax.set_xlabel(x_label)
+    return sc
 
-if not df_ls.empty:
-    sc = ax.scatter(df_ls[x_col], df_ls['p'], c=df_ls['turner_ang'],
-                    cmap='RdBu_r', vmin=PLOT_VARS_CFG['turner']['vmin'], vmax=PLOT_VARS_CFG['turner']['vmax'], s=35, zorder=2,
-                    edgecolors='k', linewidths=0.3)
-    cb = plt.colorbar(sc, ax=ax, pad=0.01)
-    cb.set_label('Turner angle (°)')
-ax.invert_yaxis()
-ax.grid(True, **GRID_KW)
-ax.set_ylabel('Pressure (dbar)')
-ax.set_xlabel(x_label)
-ax.set_title(f"{title_datetime_str}\nTurner angle  (red = salt fingering >45°, blue = diffusive convection <-45°)", loc='left')
-add_station_markers(ax, fig)
+
+if TURNAROUND_DETECTED:
+    df_ls_out, df_ls_ret = split_outbound_return(df_ls)
+    fig, (ax_out, ax_ret) = plt.subplots(2, 1, figsize=(16, 10), sharex=True)
+    fig.subplots_adjust(bottom=0.14, hspace=0.35)
+    sc_out = _plot_turner(ax_out, df_ls_out)
+    sc_ret = _plot_turner(ax_ret, df_ls_ret)
+    ax_out.set_title(f"{title_datetime_str}\nTurner angle - Eastbound leg  (red = salt fingering >45°, blue = diffusive convection <-45°)", loc='left')
+    ax_ret.set_title("Westbound leg (return)", loc='left')
+    sc_for_cb = sc_out if sc_out is not None else sc_ret
+    if sc_for_cb is not None:
+        cb = fig.colorbar(sc_for_cb, ax=[ax_out, ax_ret], pad=0.01)
+        cb.set_label('Turner angle (°)')
+    add_station_markers([ax_out, ax_ret], fig)
+else:
+    fig, ax = plt.subplots(figsize=(16, 5))
+    fig.subplots_adjust(bottom=0.22)
+    sc = _plot_turner(ax, df_ls)
+    ax.set_title(f"{title_datetime_str}\nTurner angle  (red = salt fingering >45°, blue = diffusive convection <-45°)", loc='left')
+    if sc is not None:
+        cb = plt.colorbar(sc, ax=ax, pad=0.01)
+        cb.set_label('Turner angle (°)')
+    add_station_markers(ax, fig)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_turner', f'ru29_turner_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
@@ -746,26 +887,44 @@ print(f"Max staircases in one profile: {profile_stats.n_staircases.max()}")
 
 
 #Figure: Potential density hovmoller
-fig, ax = plt.subplots(figsize=(16, 5))
-fig.subplots_adjust(bottom=0.22)
+def _plot_sigma(ax, df_results_sub, ml_sub, vmin=None, vmax=None):
+    sc = ax.scatter(
+        df_results_sub[x_col], df_results_sub['p'],
+        c=df_results_sub['sigma1'], cmap=cmo.dense, vmin=vmin, vmax=vmax,
+        s=3, rasterized=True, zorder=1
+    )
+    for _, row in ml_sub.iterrows():
+        ax.plot([row[x_col]] * 2, [row['p_start'], row['p_end']],
+                color='white', lw=3.2, alpha=0.95, zorder=3,
+                solid_capstyle='round', path_effects=[pe.Stroke(linewidth=4.4, foreground='black'), pe.Normal()])
+    ax.invert_yaxis()
+    ax.grid(True, **GRID_KW)
+    ax.set_ylabel('Pressure (dbar)')
+    ax.set_xlabel(x_label)
+    return sc
 
-sc = ax.scatter(
-    df_results[x_col], df_results['p'],
-    c=df_results['sigma1'], cmap=cmo.dense,
-    s=3, rasterized=True, zorder=1
-)
-for _, row in ml.iterrows():
-    ax.plot([row[x_col]] * 2, [row['p_start'], row['p_end']],
-            color='white', lw=3.2, alpha=0.95, zorder=3,
-            solid_capstyle='round', path_effects=[pe.Stroke(linewidth=4.4, foreground='black'), pe.Normal()])
-ax.invert_yaxis()
-ax.grid(True, **GRID_KW)
-ax.set_ylabel('Pressure (dbar)')
-ax.set_xlabel(x_label)
-cb = plt.colorbar(sc, ax=ax, pad=0.01)
-cb.set_label(' (kg m$^{-3}$)')
-ax.set_title(f"{title_datetime_str}\nPotential density (sigma1)  |  white/black = staircase mixed layers", loc='left')
-add_station_markers(ax, fig)
+
+if TURNAROUND_DETECTED:
+    df_results_out, df_results_ret = split_outbound_return(df_results)
+    ml_out, ml_ret = split_outbound_return(ml)
+    sigma_vmin, sigma_vmax = df_results['sigma1'].min(), df_results['sigma1'].max()
+    fig, (ax_out, ax_ret) = plt.subplots(2, 1, figsize=(16, 10), sharex=True)
+    fig.subplots_adjust(bottom=0.14, hspace=0.35)
+    sc = _plot_sigma(ax_out, df_results_out, ml_out, sigma_vmin, sigma_vmax)
+    _plot_sigma(ax_ret, df_results_ret, ml_ret, sigma_vmin, sigma_vmax)
+    ax_out.set_title(f"{title_datetime_str}\nPotential density (sigma1) - Eastbound leg  |  white/black = staircase mixed layers", loc='left')
+    ax_ret.set_title("Westbound leg (return)", loc='left')
+    cb = fig.colorbar(sc, ax=[ax_out, ax_ret], pad=0.01)
+    cb.set_label(' (kg m$^{-3}$)')
+    add_station_markers([ax_out, ax_ret], fig)
+else:
+    fig, ax = plt.subplots(figsize=(16, 5))
+    fig.subplots_adjust(bottom=0.22)
+    sc = _plot_sigma(ax, df_results, ml)
+    ax.set_title(f"{title_datetime_str}\nPotential density (sigma1)  |  white/black = staircase mixed layers", loc='left')
+    cb = plt.colorbar(sc, ax=ax, pad=0.01)
+    cb.set_label(' (kg m$^{-3}$)')
+    add_station_markers(ax, fig)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_sigma', f'ru29_sigma_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
@@ -783,53 +942,88 @@ class_legend = [
 cmap_class = ListedColormap(['lightgray', 'steelblue', 'darkorange'])
 norm_class  = BoundaryNorm([0, 0.5, 1.5, 2.5], cmap_class.N)
 
-fig, ax = plt.subplots(figsize=(16, 5))
-fig.subplots_adjust(bottom=0.22)
-
-ax.scatter(
-    df_results.loc[df_results['layer_type'] == 0, x_col],
-    df_results.loc[df_results['layer_type'] == 0, 'p'],
-    color='lightgray', s=3, rasterized=True, zorder=1
-)
-for lt, color in [(1, 'steelblue'), (2, 'darkorange')]:
-    mask = df_results['layer_type'] == lt
+def _plot_classification(ax, df_results_sub):
     ax.scatter(
-        df_results.loc[mask, x_col], df_results.loc[mask, 'p'],
-        color=color, s=18, rasterized=True, zorder=2, edgecolors='none'
+        df_results_sub.loc[df_results_sub['layer_type'] == 0, x_col],
+        df_results_sub.loc[df_results_sub['layer_type'] == 0, 'p'],
+        color='lightgray', s=3, rasterized=True, zorder=1
     )
+    for lt, color in [(1, 'steelblue'), (2, 'darkorange')]:
+        mask = df_results_sub['layer_type'] == lt
+        ax.scatter(
+            df_results_sub.loc[mask, x_col], df_results_sub.loc[mask, 'p'],
+            color=color, s=18, rasterized=True, zorder=2, edgecolors='none'
+        )
+    ax.invert_yaxis()
+    ax.grid(True, **GRID_KW)
+    ax.set_ylabel('Pressure (dbar)')
+    ax.set_xlabel(x_label)
 
-ax.invert_yaxis()
-ax.grid(True, **GRID_KW)
-ax.set_ylabel('Pressure (dbar)')
-ax.set_xlabel(x_label)
-ax.set_title(f"{title_datetime_str}\nStaircase layer classification", loc='left')
-add_station_markers(ax, fig, extra_handles=class_legend)
+
+if TURNAROUND_DETECTED:
+    df_results_out, df_results_ret = split_outbound_return(df_results)
+    fig, (ax_out, ax_ret) = plt.subplots(2, 1, figsize=(16, 10), sharex=True)
+    fig.subplots_adjust(bottom=0.14, hspace=0.35)
+    _plot_classification(ax_out, df_results_out)
+    _plot_classification(ax_ret, df_results_ret)
+    ax_out.set_title(f"{title_datetime_str}\nStaircase layer classification - Eastbound leg", loc='left')
+    ax_ret.set_title("Westbound leg (return)", loc='left')
+    add_station_markers([ax_out, ax_ret], fig, extra_handles=class_legend)
+else:
+    fig, ax = plt.subplots(figsize=(16, 5))
+    fig.subplots_adjust(bottom=0.22)
+    _plot_classification(ax, df_results)
+    ax.set_title(f"{title_datetime_str}\nStaircase layer classification", loc='left')
+    add_station_markers(ax, fig, extra_handles=class_legend)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_classification', f'ru29_classification_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
 
 
 # Figure: Staircase count per profile
-fig, ax = plt.subplots(figsize=(16, 5))
-fig.subplots_adjust(bottom=0.22)
+def _plot_counts(ax, all_profs_sub, profile_stats_sub, n_vmin, n_vmax):
+    ax.scatter(all_profs_sub[x_col], np.zeros(len(all_profs_sub)),
+               c=all_profs_sub['has_staircase'], cmap='RdYlGn',
+               vmin=0, vmax=1, s=40, zorder=2, alpha=0.85,
+               edgecolors='k', linewidths=0.3)
+    sc = ax.scatter(
+        profile_stats_sub[x_col], profile_stats_sub['n_staircases'],
+        c=profile_stats_sub['n_staircases'], cmap=cmo.ice_r, vmin=n_vmin, vmax=n_vmax,
+        s=70, zorder=3, edgecolors='k', linewidths=0.5
+    )
+    ax.grid(True, **GRID_KW)
+    ax.set_ylabel('# Staircases detected')
+    ax.set_xlabel(x_label)
+    ax.set_ylim(-0.5)
+    return sc
 
-ax.scatter(all_profs[x_col], np.zeros(len(all_profs)),
-           c=all_profs['has_staircase'], cmap='RdYlGn',
-           vmin=0, vmax=1, s=40, zorder=2, alpha=0.85,
-           edgecolors='k', linewidths=0.3)
-sc = ax.scatter(
-    profile_stats[x_col], profile_stats['n_staircases'],
-    c=profile_stats['n_staircases'], cmap=cmo.ice_r,
-    s=70, zorder=3, edgecolors='k', linewidths=0.5
-)
-cb = plt.colorbar(sc, ax=ax, pad=0.01)
-cb.set_label('# staircases')
-ax.grid(True, **GRID_KW)
-ax.set_ylabel('# Staircases detected')
-ax.set_xlabel(x_label)
-ax.set_title(f"{title_datetime_str}\nStaircase count per profile  |  bottom strip = presence (green) / absence (red)", loc='left')
-ax.set_ylim(-0.5)
-add_station_markers(ax, fig)
+
+if TURNAROUND_DETECTED:
+    all_profs_out, all_profs_ret = split_outbound_return(all_profs)
+    profile_stats_out, profile_stats_ret = split_outbound_return(profile_stats)
+    # Combined range, computed before splitting - the same fix as CT/sigma:
+    # this scatter layer has no fixed config-driven color limits, so
+    # splitting without this would let each panel silently auto-range to
+    # its own leg's min/max n_staircases (colors not comparable between
+    # panels).
+    n_vmin, n_vmax = profile_stats['n_staircases'].min(), profile_stats['n_staircases'].max()
+    fig, (ax_out, ax_ret) = plt.subplots(2, 1, figsize=(16, 10), sharex=True)
+    fig.subplots_adjust(bottom=0.14, hspace=0.35)
+    sc = _plot_counts(ax_out, all_profs_out, profile_stats_out, n_vmin, n_vmax)
+    _plot_counts(ax_ret, all_profs_ret, profile_stats_ret, n_vmin, n_vmax)
+    ax_out.set_title(f"{title_datetime_str}\nStaircase count per profile - Eastbound leg  |  bottom strip = presence (green) / absence (red)", loc='left')
+    ax_ret.set_title("Westbound leg (return)", loc='left')
+    cb = fig.colorbar(sc, ax=[ax_out, ax_ret], pad=0.01)
+    cb.set_label('# staircases')
+    add_station_markers([ax_out, ax_ret], fig)
+else:
+    fig, ax = plt.subplots(figsize=(16, 5))
+    fig.subplots_adjust(bottom=0.22)
+    sc = _plot_counts(ax, all_profs, profile_stats, None, None)
+    ax.set_title(f"{title_datetime_str}\nStaircase count per profile  |  bottom strip = presence (green) / absence (red)", loc='left')
+    cb = plt.colorbar(sc, ax=ax, pad=0.01)
+    cb.set_label('# staircases')
+    add_station_markers(ax, fig)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_counts', f'ru29_counts_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
@@ -848,36 +1042,54 @@ depth_legend = [
            markersize=9, markeredgecolor='k', markeredgewidth=0.5, label='Deepest'),
 ]
 
-fig, ax = plt.subplots(figsize=(16, 5))
-fig.subplots_adjust(bottom=0.22)
+def _plot_depth_range(ax, profile_stats_sub):
+    for _, row in profile_stats_sub.iterrows():
+        color = cmap_count(count_norm(row['n_staircases']))
+        ax.plot([row[x_col]] * 2, [row['p_min_clamped'], row['p_max']],
+                color=color, lw=4.5, zorder=2, solid_capstyle='round',
+                path_effects=[pe.Stroke(linewidth=6.0, foreground='black', alpha=0.5), pe.Normal()])
 
-for _, row in profile_stats.iterrows():
-    color = cmap_count(count_norm(row['n_staircases']))
-    ax.plot([row[x_col]] * 2, [row['p_min_clamped'], row['p_max']],
-            color=color, lw=4.5, zorder=2, solid_capstyle='round',
-            path_effects=[pe.Stroke(linewidth=6.0, foreground='black', alpha=0.5), pe.Normal()])
+    ax.scatter(profile_stats_sub[x_col], profile_stats_sub['p_min_clamped'],
+               c=profile_stats_sub['n_staircases'], cmap=cmap_count, norm=count_norm,
+               s=55, marker='^', zorder=4, edgecolors='k', linewidths=0.5)
+    ax.scatter(profile_stats_sub[x_col], profile_stats_sub['p_median'],
+               c=profile_stats_sub['n_staircases'], cmap=cmap_count, norm=count_norm,
+               s=55, marker='D', zorder=4, edgecolors='k', linewidths=0.5)
+    ax.scatter(profile_stats_sub[x_col], profile_stats_sub['p_max'],
+               c=profile_stats_sub['n_staircases'], cmap=cmap_count, norm=count_norm,
+               s=55, marker='v', zorder=4, edgecolors='k', linewidths=0.5)
 
-ax.scatter(profile_stats[x_col], profile_stats['p_min_clamped'],
-           c=profile_stats['n_staircases'], cmap=cmap_count, norm=count_norm,
-           s=55, marker='^', zorder=4, edgecolors='k', linewidths=0.5)
-ax.scatter(profile_stats[x_col], profile_stats['p_median'],
-           c=profile_stats['n_staircases'], cmap=cmap_count, norm=count_norm,
-           s=55, marker='D', zorder=4, edgecolors='k', linewidths=0.5)
-ax.scatter(profile_stats[x_col], profile_stats['p_max'],
-           c=profile_stats['n_staircases'], cmap=cmap_count, norm=count_norm,
-           s=55, marker='v', zorder=4, edgecolors='k', linewidths=0.5)
+    ax.invert_yaxis()
+    ax.grid(True, **GRID_KW)
+    ax.set_ylabel('Pressure (dbar)')
+    ax.set_xlabel(x_label)
 
+
+# count_norm/cmap_count are already built from the full, unsplit
+# profile_stats above (line ~1027) - correct to reuse as-is for both
+# panels when split, no extra shared-range computation needed here.
 sm = plt.cm.ScalarMappable(cmap=cmap_count, norm=count_norm)
 sm.set_array([])
-cb = plt.colorbar(sm, ax=ax, pad=0.01)
-cb.set_label('# staircases')
 
-ax.invert_yaxis()
-ax.grid(True, **GRID_KW)
-ax.set_ylabel('Pressure (dbar)')
-ax.set_xlabel(x_label)
-ax.set_title(f"{title_datetime_str}\nStaircase depth range per profile  |  bar = min-max, markers = shallowest / median / deepest", loc='left')
-add_station_markers(ax, fig, extra_handles=depth_legend)
+if TURNAROUND_DETECTED:
+    profile_stats_out, profile_stats_ret = split_outbound_return(profile_stats)
+    fig, (ax_out, ax_ret) = plt.subplots(2, 1, figsize=(16, 10), sharex=True)
+    fig.subplots_adjust(bottom=0.14, hspace=0.35)
+    _plot_depth_range(ax_out, profile_stats_out)
+    _plot_depth_range(ax_ret, profile_stats_ret)
+    ax_out.set_title(f"{title_datetime_str}\nStaircase depth range per profile - Eastbound leg  |  bar = min-max, markers = shallowest / median / deepest", loc='left')
+    ax_ret.set_title("Westbound leg (return)", loc='left')
+    cb = fig.colorbar(sm, ax=[ax_out, ax_ret], pad=0.01)
+    cb.set_label('# staircases')
+    add_station_markers([ax_out, ax_ret], fig, extra_handles=depth_legend)
+else:
+    fig, ax = plt.subplots(figsize=(16, 5))
+    fig.subplots_adjust(bottom=0.22)
+    _plot_depth_range(ax, profile_stats)
+    cb = plt.colorbar(sm, ax=ax, pad=0.01)
+    cb.set_label('# staircases')
+    ax.set_title(f"{title_datetime_str}\nStaircase depth range per profile  |  bar = min-max, markers = shallowest / median / deepest", loc='left')
+    add_station_markers(ax, fig, extra_handles=depth_legend)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_depth_range', f'ru29_depth_range_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
