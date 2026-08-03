@@ -7,3 +7,11 @@ turner:
   vmin: -90
   vmax: 90
 station_reach_km: 10.0
+
+# ru29_staircase_new.py only (not read by ru29_staircase.py): minimum
+# sustained pullback (degrees longitude) from the running eastward/westward
+# extreme before a zonal-survey reversal counts as a real turnaround rather
+# than one noisy backward-drifting profile. Tune after watching real
+# inter-profile longitude spacing on the 12N line.
+turnaround:
+  min_reversal_deg: 0.15
