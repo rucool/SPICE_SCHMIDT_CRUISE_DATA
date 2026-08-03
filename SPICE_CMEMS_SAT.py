@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import cartopy.io.shapereader as shpreader
 import cmocean.cm as cmo
 import dask
 import os
@@ -31,6 +32,48 @@ CMEMS_BASE_DIR = args.cmems_dir
 
 # Shared bounding box for every map: [lon_min, lon_max, lat_min, lat_max]
 TROP_WTRN_ATL_EXTENT = [-63, -40.75, 4, 19]
+
+# EEZ (Exclusive Economic Zone) boundary lines, drawn gray on every map
+# regardless of variable/colormap - user-supplied shapefile in ./eez/
+# (World_Exclusive_Economic_Zones_Boundaries.shp, VLIZ source, boundary
+# LineStrings already - not polygons, no need to extract edges). Loaded
+# and bbox-filtered once at import time rather than per-figure - this
+# script draws many figures per run, and re-reading+scanning all 743
+# global records on every one would be wasted work. Read via
+# cartopy.io.shapereader (wraps pyshp) rather than geopandas - geopandas
+# isn't installed in the spice_data env this actually runs in.
+EEZ_SHP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'eez',
+                             'World_Exclusive_Economic_Zones_Boundaries.shp')
+
+
+def load_eez_geometries(bbox, pad_deg=2.0):
+    """Returns a list of shapely LineString geometries from EEZ_SHP_PATH
+    whose bounding box intersects `bbox` (padded by pad_deg on each side -
+    generous on purpose since a segment's own bbox can extend well past
+    the map extent while still being the line that terminates just inside
+    it). Missing shapefile or read error -> empty list (map still renders,
+    just without the EEZ overlay) rather than crashing the whole run."""
+    lon_min, lon_max, lat_min, lat_max = bbox
+    lon_min, lon_max = lon_min - pad_deg, lon_max + pad_deg
+    lat_min, lat_max = lat_min - pad_deg, lat_max + pad_deg
+    try:
+        records = list(shpreader.Reader(EEZ_SHP_PATH).records())
+    except Exception as e:
+        print(f"Warning: could not load EEZ shapefile from {EEZ_SHP_PATH}: {e} - skipping EEZ overlay")
+        return []
+    geoms = []
+    for rec in records:
+        geom = rec.geometry
+        if geom is None:
+            continue
+        minx, miny, maxx, maxy = geom.bounds
+        if maxx >= lon_min and minx <= lon_max and maxy >= lat_min and miny <= lat_max:
+            geoms.append(geom)
+    print(f"EEZ overlay: {len(geoms)} boundary segments loaded from {os.path.basename(EEZ_SHP_PATH)}")
+    return geoms
+
+
+EEZ_GEOMETRIES = load_eez_geometries(TROP_WTRN_ATL_EXTENT)
 
 # product -> variables to plot (matches the folder names cmems_download.py writes into)
 PRODUCT_PLOT_VARS = {
@@ -248,6 +291,15 @@ def plot_and_save_variable(ds, var, bbox=TROP_WTRN_ATL_EXTENT, base_dir=FIG_BASE
         gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
         gl.top_labels = False
         gl.right_labels = False
+
+        # EEZ boundary lines - explicit high-ish zorder so they render on
+        # top of the pcolormesh data regardless of matplotlib's per-artist-
+        # type default stacking (added here in the code, before the data,
+        # purely because this is the natural "map features" section to
+        # group it with land/coastline/borders/gridlines).
+        if EEZ_GEOMETRIES:
+            ax.add_geometries(EEZ_GEOMETRIES, ccrs.PlateCarree(),
+                               edgecolor='gray', facecolor='none', linewidth=0.7, zorder=4)
 
         binary_mode = var == "nfai" and NFAI_BINARY_MODE
         if binary_mode:

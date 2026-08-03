@@ -24,6 +24,7 @@ import os
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import cartopy.io.shapereader as shpreader
 import cmocean.cm as cmo
 import matplotlib.pyplot as plt
 import numpy as np
@@ -31,6 +32,41 @@ import pandas as pd
 import xarray as xr
 
 TROP_WTRN_ATL_EXTENT = [-63, -40.75, 4, 19]
+
+# EEZ boundary lines, drawn gray on this map too - same source/approach as
+# SPICE_CMEMS_SAT.py (see that script's comment for why cartopy.io.shapereader
+# rather than geopandas: not installed in the spice_data env this runs in).
+# Duplicated rather than imported for the same reason the rest of this
+# script's helpers are duplicated - see the PLATFORMS comment below.
+EEZ_SHP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'eez',
+                             'World_Exclusive_Economic_Zones_Boundaries.shp')
+
+
+def load_eez_geometries(bbox, pad_deg=2.0):
+    """Returns a list of shapely LineString geometries from EEZ_SHP_PATH
+    whose bounding box intersects `bbox` (padded by pad_deg). Missing
+    shapefile or read error -> empty list rather than crashing the run."""
+    lon_min, lon_max, lat_min, lat_max = bbox
+    lon_min, lon_max = lon_min - pad_deg, lon_max + pad_deg
+    lat_min, lat_max = lat_min - pad_deg, lat_max + pad_deg
+    try:
+        records = list(shpreader.Reader(EEZ_SHP_PATH).records())
+    except Exception as e:
+        print(f"Warning: could not load EEZ shapefile from {EEZ_SHP_PATH}: {e} - skipping EEZ overlay")
+        return []
+    geoms = []
+    for rec in records:
+        geom = rec.geometry
+        if geom is None:
+            continue
+        minx, miny, maxx, maxy = geom.bounds
+        if maxx >= lon_min and minx <= lon_max and maxy >= lat_min and miny <= lat_max:
+            geoms.append(geom)
+    print(f"EEZ overlay: {len(geoms)} boundary segments loaded from {os.path.basename(EEZ_SHP_PATH)}")
+    return geoms
+
+
+EEZ_GEOMETRIES = load_eez_geometries(TROP_WTRN_ATL_EXTENT)
 
 # Toggle: overlay eddy positions on the actual SLA field they were derived
 # from (written by eddy_trajectory_download.py's fetch_sla_background,
@@ -170,6 +206,12 @@ def plot_eddies(eddy_data, sla_ds=None, bbox=TROP_WTRN_ATL_EXTENT, base_dir=args
     gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
     gl.top_labels = False
     gl.right_labels = False
+
+    # EEZ boundary lines - zorder above the SLA background (zorder=1 below)
+    # but below eddy markers/tracks (40/41) and platform overlays (50/51).
+    if EEZ_GEOMETRIES:
+        ax.add_geometries(EEZ_GEOMETRIES, ccrs.PlateCarree(),
+                           edgecolor='gray', facecolor='none', linewidth=0.7, zorder=4)
 
     sla_date = None
     if sla_mode:
