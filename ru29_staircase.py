@@ -696,9 +696,41 @@ def add_station_markers(axes, fig, extra_handles=None):
         max_ncols = 10
         nrows = -(-len(all_handles) // max_ncols)  # ceil
         ncols = -(-len(all_handles) // nrows)  # smallest ncols that still fits in nrows - avoids a mostly-empty trailing row
-        fig.legend(handles=_legend_row_major_order(all_handles, ncols), loc='lower center',
-                   bbox_to_anchor=(0.5, 0.0), ncol=ncols,
-                   frameon=True, fontsize=10, handletextpad=0.3, columnspacing=1.0)
+        leg = fig.legend(handles=_legend_row_major_order(all_handles, ncols), loc='lower center',
+                          bbox_to_anchor=(0.5, 0.0), ncol=ncols,
+                          frameon=True, fontsize=10, handletextpad=0.3, columnspacing=1.0)
+
+        # Grow the bottom margin so the x-axis label of the bottom-most axes
+        # clears the legend - self-correcting via directly measured pixel
+        # gap rather than a guessed constant (two earlier attempts at
+        # guessing a fixed-fraction buffer both underestimated the real
+        # buffer needed - a legend's top edge in figure-fraction terms is
+        # NOT the same as "how much bottom margin clears it", since the
+        # x-axis label itself needs its own full height below the axes
+        # edge too, not just a small gap above the legend). This measures
+        # ax.xaxis.label's actual bottom edge vs. the legend's actual top
+        # edge in pixels and shifts `bottom` by exactly the deficit -
+        # exact because the label's pixel position moves in lockstep with
+        # `bottom` at a 1:1 rate (delta_bottom * fig_height_px), while the
+        # legend's position doesn't move at all (bbox_to_anchor=(0.5, 0.0)
+        # anchors it to figure y=0 regardless of the axes' bottom margin).
+        # A couple of iterations lets it converge if the first shift was
+        # slightly off. Uses the bottom-most axes (axes[-1]) since that's
+        # the one whose label actually sits near the legend - only
+        # relevant when axes has 2 entries (the turnaround-split case).
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        min_gap_px = 12
+        for _ in range(3):
+            xlabel_y0 = axes[-1].xaxis.label.get_window_extent(renderer).y0
+            legend_y1 = leg.get_window_extent(renderer).y1
+            gap_px = xlabel_y0 - legend_y1
+            if gap_px >= min_gap_px:
+                break
+            fig_height_px = fig.get_size_inches()[1] * fig.dpi
+            new_bottom = fig.subplotpars.bottom + (min_gap_px - gap_px) / fig_height_px
+            fig.subplots_adjust(bottom=new_bottom)
+            fig.canvas.draw()
 
 
 # Figure 1: Conservative Temperature
