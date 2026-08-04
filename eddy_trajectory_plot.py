@@ -38,8 +38,8 @@ TROP_WTRN_ATL_EXTENT = [-63, -40.75, 4, 19]
 # rather than geopandas: not installed in the spice_data env this runs in).
 # Duplicated rather than imported for the same reason the rest of this
 # script's helpers are duplicated - see the PLATFORMS comment below.
-EEZ_SHP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'eez',
-                             'World_Exclusive_Economic_Zones_Boundaries.shp')
+EEZ_SHP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'World_EEZ_v11_20191118',
+                             'eez_boundaries_v11.shp')
 
 
 def load_eez_geometries(bbox, pad_deg=2.0):

@@ -34,16 +34,16 @@ CMEMS_BASE_DIR = args.cmems_dir
 TROP_WTRN_ATL_EXTENT = [-63, -40.75, 4, 19]
 
 # EEZ (Exclusive Economic Zone) boundary lines, drawn gray on every map
-# regardless of variable/colormap - user-supplied shapefile in ./eez/
-# (World_Exclusive_Economic_Zones_Boundaries.shp, VLIZ source, boundary
-# LineStrings already - not polygons, no need to extract edges). Loaded
-# and bbox-filtered once at import time rather than per-figure - this
-# script draws many figures per run, and re-reading+scanning all 743
-# global records on every one would be wasted work. Read via
+# regardless of variable/colormap - user-supplied shapefile in
+# ./World_EEZ_v11_20191118/ (Marine Regions v11, eez_boundaries_v11.shp,
+# boundary LineStrings already - not polygons, no need to extract edges).
+# Loaded and bbox-filtered once at import time rather than per-figure -
+# this script draws many figures per run, and re-reading+scanning every
+# global record on every one would be wasted work. Read via
 # cartopy.io.shapereader (wraps pyshp) rather than geopandas - geopandas
 # isn't installed in the spice_data env this actually runs in.
-EEZ_SHP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'eez',
-                             'World_Exclusive_Economic_Zones_Boundaries.shp')
+EEZ_SHP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'World_EEZ_v11_20191118',
+                             'eez_boundaries_v11.shp')
 
 
 def load_eez_geometries(bbox, pad_deg=2.0):

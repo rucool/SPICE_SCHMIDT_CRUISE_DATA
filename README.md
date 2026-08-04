@@ -38,7 +38,15 @@ cp config.py.example config.py
 ```
 `config.py` is gitignored — never commit it.
 
-**3. Copernicus Marine credentials**
+**3. EEZ boundary shapefile**
+
+`SPICE_CMEMS_SAT.py` and `eddy_trajectory_plot.py` overlay gray EEZ (Exclusive Economic Zone) boundary lines on every map. The shapefile itself isn't tracked in this repo (not a `.py` file). Download the World EEZ v11 boundaries dataset from [marineregions.org](https://www.marineregions.org/), and place the extracted folder as `World_EEZ_v11_20191118/` in the same directory as the `.py` scripts, so `eez_boundaries_v11.shp` (plus its `.dbf`/`.shx`/`.prj`/`.cpg` sidecar files) resolves at:
+```
+World_EEZ_v11_20191118/eez_boundaries_v11.shp
+```
+If the folder or shapefile is missing, both scripts print a warning and skip the overlay rather than failing the run.
+
+**4. Copernicus Marine credentials**
 
 Run once, interactively:
 ```bash
@@ -46,7 +54,7 @@ python -c "import copernicusmarine; copernicusmarine.login()"
 ```
 Credentials are cached locally by the `copernicusmarine` package itself; nothing gets stored in this repo.
 
-**4. AVISO+ credentials (for eddy trajectory data)**
+**5. AVISO+ credentials (for eddy trajectory data)**
 
 `eddy_trajectory_download.py` pulls from AVISO+, not Copernicus Marine, and needs its own free account (register at aviso.altimetry.fr) with credentials in `~/.netrc`:
 ```
