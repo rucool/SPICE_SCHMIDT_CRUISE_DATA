@@ -75,13 +75,27 @@ def discover_eddy_filenames(catalog_url=CATALOG_URL):
 
     filenames = {}
     for polarity in ("anticyclonic", "cyclonic"):
-        match = re.search(
-            rf'name="(Eddy_trajectory_nrt_3\.2exp_{polarity}_\d{{8}}_\d{{8}}\.nc)"',
+        # The catalog can list more than one entry per polarity, e.g. during
+        # AVISO's nightly file-rotation window if an old entry is still
+        # listed alongside (or instead of) the new one - picking the first
+        # regex match isn't safe since catalog content during a glitch isn't
+        # guaranteed. On 2026-08-11 this picked a stale ..._20220512.nc file
+        # instead of the current ..._20260727.nc one, which got written
+        # straight into eddy_<polarity>_latest.nc before the run crashed
+        # later on an unrelated SLA date-range check - exact mechanism
+        # (wrong entry picked out of several vs. only the stale one served)
+        # unconfirmed, but picking by end-date is a free improvement either
+        # way. The real backstop for a same-single-entry glitch, where this
+        # fix alone wouldn't help, is the overwrite guard in
+        # fetch_eddy_subset below.
+        matches = re.findall(
+            rf'name="(Eddy_trajectory_nrt_3\.2exp_{polarity}_\d{{8}}_(\d{{8}}))\.nc"',
             catalog_xml,
         )
-        if not match:
+        if not matches:
             raise RuntimeError(f"Could not find current {polarity} eddy trajectory filename in AVISO catalog")
-        filenames[polarity] = match.group(1)
+        best_stem, _ = max(matches, key=lambda m: m[1])
+        filenames[polarity] = f"{best_stem}.nc"
     return filenames
 
 
@@ -298,6 +312,26 @@ def fetch_eddy_subset(polarity, filename, bbox, window_days, output_dir):
         subset[var].encoding = {}
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, f"eddy_{polarity}_latest.nc")
+
+    # Never let a bad fetch silently overwrite a good previous output with
+    # older data - a wrong/stale AVISO catalog pick did exactly this on
+    # 2026-08-11 (see discover_eddy_filenames), writing ~2022 data over the
+    # previous day's real eddies before the run crashed later on an
+    # unrelated SLA-background step, so the bad overwrite went unnoticed
+    # until the log was read the next morning. .load()+.close() avoids a
+    # confirmed sequential-dataset-open cross-contamination bug in this
+    # environment (see project memory - same fix used in cmems_sla_adt.py).
+    if os.path.exists(out_path):
+        existing = xr.open_dataset(out_path)
+        existing_latest = pd.to_datetime(existing["time"].load().values).max()
+        existing.close()
+        if latest_obs < existing_latest:
+            raise RuntimeError(
+                f"{polarity}: new data's latest observation ({latest_obs:%Y-%m-%d}) is older than "
+                f"the existing {out_path}'s ({existing_latest:%Y-%m-%d}) - refusing to overwrite with "
+                f"stale data"
+            )
+
     subset.to_netcdf(out_path)
     print(f"{polarity}: {mask.sum()} observations, {len(np.unique(subset['track'].values))} unique eddies, "
           f"wrote {out_path}")
