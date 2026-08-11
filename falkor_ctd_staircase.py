@@ -12,6 +12,7 @@ import datetime as dt
 import glob
 import os
 import re
+import sys
 
 import gsw
 import matplotlib.pyplot as plt
@@ -138,16 +139,32 @@ def parse_sbe_cnv(filepath):
     return df, meta
 
 
-def process_cast(filepath):
-    """Read one CTD cast (up or down) and run TEOS-10 + staircase classification."""
+def process_cast(filepath, skipped=None):
+    """Read one CTD cast (up or down) and run TEOS-10 + staircase classification.
+
+    `skipped`, if given, is a list that a (cast_id, profile_num, cast_direction,
+    lat, lon, nearest_station, reason) dict gets appended to on every skip
+    path, so main() can write out a record of casts that never made it into
+    the survey figures at all - not just print a line that scrolls out of the log.
+    """
     df, meta = parse_sbe_cnv(filepath)
+    station = _nearest_station(meta['lat'], meta['lon'])
+
+    def _record_skip(reason):
+        print(f"  skip {meta['cast_id']}: {reason} - nearest station: {station}")
+        if skipped is not None:
+            skipped.append({
+                'cast_id': meta['cast_id'], 'profile_num': meta['profile_num'],
+                'cast_direction': meta['cast_direction'], 'lat': meta['lat'], 'lon': meta['lon'],
+                'nearest_station': station, 'reason': reason,
+            })
 
     df = df.dropna(subset=['pressure', 'temperature', 'salinity', 'lat', 'lon'])
     df = df.drop_duplicates(subset='pressure').sort_values('pressure')
 
     if len(df) < MIN_POINTS or df.empty or df.pressure.max() < MIN_CAST_PRESSURE:
         max_p = df.pressure.max() if len(df) else float('nan')
-        print(f"  skip {meta['cast_id']}: too shallow/sparse ({len(df)} pts, max {max_p:.1f} dbar)")
+        _record_skip(f"too shallow/sparse ({len(df)} pts, max {max_p:.1f} dbar)")
         return None
 
     df['absolute_salinity'] = gsw.SA_from_SP(df.salinity, df.pressure, df.lon, df.lat)
@@ -160,6 +177,7 @@ def process_cast(filepath):
     p_max = np.floor(df.pressure.max())
     p_reg = np.arange(p_min, p_max + 1, 1.0)
     if len(p_reg) < MIN_POINTS:
+        _record_skip(f"too few regridded 1 dbar levels ({len(p_reg)})")
         return None
 
     ct_reg = np.interp(p_reg, df.pressure.values, df.conservative_temperature.values)
@@ -169,11 +187,12 @@ def process_cast(filepath):
         df_out, mixes, grads = classify_staircase(p_reg, ct_reg, sa_reg, temp_flag_only=True, show_steps=False)
     except Exception:
         import traceback
-        print(f"  ERROR in classify_staircase for {meta['cast_id']}:")
         traceback.print_exc()
+        _record_skip("classify_staircase raised an exception (see traceback above)")
         return None
 
     if df_out is None or len(df_out) == 0:
+        _record_skip("classify_staircase returned no data")
         return None
 
     df_out = df_out.copy()
@@ -241,6 +260,19 @@ def split_down_up(df):
     down = df.loc[df['cast_direction'] == 'down'].copy()
     up = df.loc[df['cast_direction'] == 'up'].copy()
     return down, up
+
+
+def _nearest_station(lat, lon):
+    """Name of the closest station in STATIONS to (lat, lon), or None if
+    lat/lon is missing. Not every cast produces staircase results (too
+    shallow, or classify_staircase fails on it) - those casts never make it
+    into the survey figures/station-reach logic at all, so this is used to
+    still say *which station a skipped/bad cast was near*, purely by
+    distance (independent of the survey figures' own reach threshold)."""
+    if lat is None or lon is None:
+        return None
+    dists = [gsw.distance([lon, s['lon']], [lat, s['lat']])[0] for s in STATIONS]
+    return STATIONS[int(np.argmin(dists))]['name']
 
 
 def _surface_mld(group, delta_T=0.2, ref_p=10.0):
@@ -349,15 +381,29 @@ def main():
     print(f"Found {len(files)} cast file(s) (up + down)")
 
     results = []
+    skipped = []
     for fp in files:
         print(f"Processing {os.path.basename(fp)} ...")
-        res = process_cast(fp)
+        res = process_cast(fp, skipped)
         if res is not None:
             results.append(res)
 
     print(f"Done. Casts with staircase results: {len(results)} / {len(files)}")
+    if skipped:
+        pd.DataFrame(skipped).to_csv(f"{args.output_prefix}_skipped_casts.csv", index=False)
+        print(f"Skipped {len(skipped)} cast(s) this run (see {args.output_prefix}_skipped_casts.csv "
+              f"for nearest station + reason on each)")
     if not results:
-        return
+        # Every file found this run failed to produce usable results (too
+        # shallow/sparse, or classify_staircase errored on all of them) -
+        # exit non-zero so cron's MAILTO actually flags a run that silently
+        # produced no output, instead of looking identical to a clean exit.
+        # Same reliability gap class as the *_cruise.sh exit-code fix (see
+        # memory project_cruise_wrapper_exit_codes) - just a different code
+        # path (zero usable results vs. a raised exception).
+        print(f"ERROR: {len(files)} cast file(s) found in {args.casts_dir}, but none produced "
+              f"usable results - no output written this run.", file=sys.stderr)
+        raise SystemExit(1)
 
     df_out_all, mixes_all, grads_all, stair_stats_all, stairs_ct_all, meta_all = [], [], [], [], [], []
     for meta, df_out, mixes_df, grads_df, stair_stats_df, stairs_ct_df in results:
@@ -429,7 +475,16 @@ def main():
         s['color'] = tab10.colors[i % 10]
         s['marker'] = STATION_MARKER_SHAPES[(i // 10) % len(STATION_MARKER_SHAPES)]
 
-    down_coords = cast_coords[cast_coords['cast_direction'] == 'down']
+    # A station still counts as "reached" even if its nearest cast got
+    # skipped (too shallow, algorithm failure, etc.) - the ship was
+    # physically there regardless of whether that cast's data was usable,
+    # so skipped down-casts' positions count toward reach too (they just
+    # never show up as actual data in the figures, only as a station mark).
+    skipped_df = pd.DataFrame(skipped) if skipped else pd.DataFrame(columns=['cast_direction', 'lat', 'lon'])
+    down_coords = pd.concat([
+        cast_coords.loc[cast_coords['cast_direction'] == 'down', ['lat', 'lon']],
+        skipped_df.loc[skipped_df['cast_direction'] == 'down', ['lat', 'lon']],
+    ], ignore_index=True).dropna()
     STATION_REACH_KM = PLOT_VARS_CFG['station_reach_km']
     if not down_coords.empty:
         stn_pts = np.array([[s['lat'], s['lon']] for s in stations])
