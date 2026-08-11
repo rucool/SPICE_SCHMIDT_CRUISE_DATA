@@ -7,7 +7,7 @@ This repo holds the satellite and platform-tracking figure pipeline supporting t
 ## Scripts
 
 - **`cmems_download.py`** — pulls gridded satellite products from Copernicus Marine (SSH/SLA, SST, chlorophyll, sea surface salinity + density, Sargassum floating algae index) into `cmems_data/<product>/`. Shared by the two plotting scripts below.
-- **`SPICE_CMEMS_SAT.py`** — generates one map per variable/day, overlaying every enabled platform's track (glider, ship) from `PLATFORMS` in the script. Copies output to the web folder configured in `config.py`. `NFAI_BINARY_MODE` toggles the Sargassum index between a continuous gradient and a simple detected/not-detected view.
+- **`SPICE_CMEMS_SAT.py`** — generates one map per variable/day, overlaying every enabled platform's track (glider, ship) from `configs/platforms.yml`. Copies output to the web folder configured in `config.py`. `NFAI_BINARY_MODE` toggles the Sargassum index between a continuous gradient and a simple detected/not-detected view.
 - **`cmems_sla_adt.py`** — generates a KMZ (SSH/SLA) for viewing in Google Earth.
 - **`ru29_staircase.py`** — pulls ru29 glider profiles from the Rutgers glider ERDDAP, detects thermohaline staircases, and writes both the staircase figures and the glider's position track (`ru29_latest_track.csv`) that `SPICE_CMEMS_SAT.py` overlays. Plots against longitude (not distance-along-track) while ru29 is within its fixed zonal survey latitude band.
 - **`gliders_staircase.py`** — generalized version of `ru29_staircase.py` for any other glider deployment (e.g. the VOTO glider): takes a `deployment` ID the same way the real-time plotting scripts below do, reusing the same staircase-detection/hovmoller pipeline. Use `ru29_staircase.py` specifically for ru29 (it has ru29's own fixed zonal-survey plotting variant); use this one for everything else.
@@ -69,13 +69,22 @@ Most OPeNDAP/netCDF backends (and the plain HTTP client this script uses) refuse
 
 ## Adding or toggling a platform
 
-`SPICE_CMEMS_SAT.py`'s `PLATFORMS` list controls what gets overlaid on the maps:
-```python
-PLATFORMS = [
-    {"name": "ru29", "csv": "ru29_latest_track.csv", "marker": "*", "color": "gold", "markersize": 10, "enabled": True},
-    {"name": "Falkor (too)", "csv": "falkor_track.csv", "marker": "^", "color": "magenta", "markersize": 8, "enabled": False},
-]
+`configs/platforms.yml` is the single shared source of truth for platform track overlays, read by `SPICE_CMEMS_SAT.py`, `eddy_trajectory_plot.py`, and `eddy_12N_forecast.py`:
+```yaml
+platforms:
+  - name: ru29
+    csv: ru29_latest_track.csv
+    marker: "*"
+    color: gold
+    markersize: 10
+    enabled: true
+  - name: Falkor (too)
+    csv: falkor_track.csv
+    marker: "^"
+    color: magenta
+    markersize: 8
+    enabled: false
 ```
-Each entry needs a `time,lat,lon` CSV written by its own fetch script. Flip `"enabled"` to turn a platform's overlay on/off without removing it; add a new dict (with a distinct `marker`/`color`) for additional platforms.
+Each entry needs a `time,lat,lon` CSV written by its own fetch script. Flip `enabled` to turn a platform's overlay on/off everywhere at once, without removing it; add a new entry (with a distinct `marker`/`color`) for additional platforms. `marker`/`color`/`markersize` are only used by the two map scripts - `eddy_12N_forecast.py` only reads `name`/`csv`/`enabled`.
 
-`eddy_trajectory_plot.py` and `eddy_12N_forecast.py` each keep their own copy of this list (not imported - neither of the other two scripts is safely importable as a module) with just `name`/`csv`/`enabled`, no marker/color. Keep `"enabled"` in sync by hand across all three when toggling a platform - e.g. flipping Falkor (too) on for the real cruise means updating it in `SPICE_CMEMS_SAT.py`, `eddy_trajectory_plot.py`, and `eddy_12N_forecast.py`. In `eddy_12N_forecast.py` specifically, a disabled platform's distance columns simply aren't available to select in `configs/eddy_12N_forecast.yml` - naming one anyway is skipped with a run-time warning rather than an error, and starts working the moment it's re-enabled.
+In `eddy_12N_forecast.py` specifically, a disabled platform's distance columns simply aren't available to select in `configs/eddy_12N_forecast.yml` - naming one anyway is skipped with a run-time warning rather than an error, and starts working the moment it's re-enabled in `configs/platforms.yml`.
