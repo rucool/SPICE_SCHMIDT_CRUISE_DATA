@@ -388,50 +388,6 @@ def main():
     n_staircases = sum(int(s['mixed_layer'].sum()) for s in stair_stats_all) if stair_stats_all else 0
     print(f"Total mixed layers found across all casts: {n_staircases}")
 
-    plot_dir = os.path.join(args.save_dir, 'ctd_staircase_profiles')
-    os.makedirs(plot_dir, exist_ok=True)
-
-    for meta, df_out, mixes_df, grads_df, stair_stats_df, stairs_ct_df in results:
-        fig, ax_ct = plt.subplots(figsize=(6, 9))
-
-        ct_color = cmo.thermal(0.6)
-        sa_color = cmo.haline(0.35)
-
-        ax_ct.plot(df_out['ct'], df_out['p'], color=ct_color, lw=1.3)
-        ax_ct.set_xlabel('Conservative Temperature (deg C)', color=ct_color)
-        ax_ct.tick_params(axis='x', colors=ct_color)
-
-        ax_sa = ax_ct.twiny()
-        ax_sa.plot(df_out['sa'], df_out['p'], color=sa_color, lw=1.3)
-        ax_sa.set_xlabel('Absolute Salinity (g/kg)', color=sa_color)
-        ax_sa.tick_params(axis='x', colors=sa_color)
-
-        n_ml = 0
-        if stair_stats_df is not None:
-            ml = stair_stats_df[stair_stats_df['mixed_layer']]
-            n_ml = len(ml)
-            for _, row in ml.iterrows():
-                ax_ct.axhspan(row['p_start'], row['p_end'], color='steelblue', alpha=0.25, zorder=0)
-
-        ax_ct.invert_yaxis()
-        ax_ct.set_ylabel('Pressure (dbar)')
-        ax_ct.grid(True, color='gray', alpha=0.2, linewidth=0.5, zorder=-1)
-
-        cast_time_str = meta['cast_time'].strftime('%Y-%m-%d %H:%M UTC') if pd.notna(meta['cast_time']) else 'unknown time'
-        lat_str = f"{meta['lat']:.4f}" if meta['lat'] is not None else 'n/a'
-        lon_str = f"{meta['lon']:.4f}" if meta['lon'] is not None else 'n/a'
-        ax_ct.set_title(
-            f"{meta['cast_id']} (Profile {meta['profile_num']})  |  {cast_time_str}\n"
-            f"lat {lat_str}, lon {lon_str}  |  shaded = staircase mixed layers ({n_ml})",
-            loc='left', fontsize=10)
-
-        fig.tight_layout()
-        fig.savefig(os.path.join(plot_dir, f"{meta['cast_id']}_staircase_profile.png"), dpi=200, bbox_inches='tight')
-        plt.close(fig)
-
-    print(f"Saved {len(results)} profile figure(s) to {plot_dir}")
-
-
     # =========================================================================
     # Multi-cast survey figures: CT / ml_height / turner / sigma /
     # classification / counts / depth_range, longitude-indexed, always split
