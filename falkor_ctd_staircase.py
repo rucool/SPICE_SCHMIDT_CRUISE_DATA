@@ -550,6 +550,17 @@ def main():
     df_results_down, df_results_up = split_down_up(df_results)
     ml_down, ml_up = split_down_up(ml)
 
+    # Shared y-axis (pressure) ranges, computed once from the FULL
+    # (both-panel) data before any per-direction splitting - every figure
+    # below applies its own version of this explicitly, rather than letting
+    # each panel's own scatter autoscale independently. Without this, a
+    # panel whose own subset happens to be empty (e.g. zero staircases on
+    # every up-cast this run, which is common - see the down-vs-up
+    # detection-asymmetry discussion) has nothing for matplotlib to
+    # autoscale against and silently collapses to a degenerate near-zero
+    # range instead of showing the real water-column depth.
+    p_full_ymin, p_full_ymax = df_results['p'].min(), df_results['p'].max()
+
     # Figure 1: Conservative Temperature
     def _plot_ct(ax, df_sub, ml_sub, vmin=None, vmax=None):
         sc = ax.scatter(df_sub['lon'], df_sub['p'], c=df_sub['ct'], cmap=cmo.thermal,
@@ -561,6 +572,7 @@ def main():
         ax.invert_yaxis()
         ax.grid(True, **GRID_KW)
         ax.set_ylabel('Pressure (dbar)')
+        ax.set_ylim(p_full_ymax, p_full_ymin)
         return sc
 
     ct_vmin, ct_vmax = df_results['ct'].min(), df_results['ct'].max()
@@ -579,6 +591,11 @@ def main():
     plt.close(fig)
 
     # Figure 2: Mixed-layer height
+    # Fallback to the full profile depth range if NO staircases were found
+    # anywhere this run (ml entirely empty) - otherwise use the actual
+    # mixed-layer depth range so the figure zooms to where the data is.
+    ml_ymin, ml_ymax = (ml['p'].min(), ml['p'].max()) if not ml.empty else (p_full_ymin, p_full_ymax)
+
     def _plot_ml_height(ax, ml_sub):
         sc = None
         if not ml_sub.empty:
@@ -588,6 +605,7 @@ def main():
         ax.invert_yaxis()
         ax.grid(True, **GRID_KW)
         ax.set_ylabel('Pressure (dbar)')
+        ax.set_ylim(ml_ymax, ml_ymin)
         return sc
 
     fig, (ax_down, ax_up) = plt.subplots(2, 1, figsize=(16, 10), sharex=True)
@@ -609,6 +627,10 @@ def main():
     df_ls_down, df_ls_up = split_down_up(df_ls)
 
     # Figure 3: Turner angle
+    # Same fallback pattern as ml_height above, but against df_ls (all
+    # layers, not just mixed ones) since that's this figure's own data source.
+    turner_ymin, turner_ymax = (df_ls['p'].min(), df_ls['p'].max()) if not df_ls.empty else (p_full_ymin, p_full_ymax)
+
     def _plot_turner(ax, df_ls_sub):
         sc = None
         if not df_ls_sub.empty:
@@ -618,6 +640,7 @@ def main():
         ax.invert_yaxis()
         ax.grid(True, **GRID_KW)
         ax.set_ylabel('Pressure (dbar)')
+        ax.set_ylim(turner_ymax, turner_ymin)
         return sc
 
     fig, (ax_down, ax_up) = plt.subplots(2, 1, figsize=(16, 10), sharex=True)
@@ -647,6 +670,7 @@ def main():
         ax.invert_yaxis()
         ax.grid(True, **GRID_KW)
         ax.set_ylabel('Pressure (dbar)')
+        ax.set_ylim(p_full_ymax, p_full_ymin)
         return sc
 
     sigma_vmin, sigma_vmax = df_results['sigma1'].min(), df_results['sigma1'].max()
@@ -681,6 +705,7 @@ def main():
         ax.invert_yaxis()
         ax.grid(True, **GRID_KW)
         ax.set_ylabel('Pressure (dbar)')
+        ax.set_ylim(p_full_ymax, p_full_ymin)
 
     fig, (ax_down, ax_up) = plt.subplots(2, 1, figsize=(16, 10), sharex=True)
     fig.subplots_adjust(bottom=0.14, hspace=0.35)
@@ -731,7 +756,14 @@ def main():
                          s=90, zorder=3, edgecolors='k', linewidths=0.5)
         ax.grid(True, **GRID_KW)
         ax.set_ylabel('# Staircases detected')
-        ax.set_ylim(-0.5)
+        # Explicit upper bound too, not just the lower one - if this panel's
+        # own casts all found zero staircases (profile_stats_sub empty), the
+        # "n_staircases" scatter has nothing to anchor autoscale to, and
+        # matplotlib was picking a near-zero/negative-tick-label range that
+        # made an all-absent panel look broken. n_vmax comes from the full
+        # (both-panel) profile_stats, so this also keeps the two panels on
+        # the same y-scale, same as the shared colorbar already does.
+        ax.set_ylim(-0.5, n_vmax + 0.5)
         return sc
 
     all_profs_down, all_profs_up = split_down_up(all_profs)
@@ -779,6 +811,21 @@ def main():
         ax.invert_yaxis()
         ax.grid(True, **GRID_KW)
         ax.set_ylabel('Pressure (dbar)')
+        # Explicit shared range - if this panel's own casts all found zero
+        # staircases (profile_stats_sub empty), there's nothing to anchor
+        # autoscale to and matplotlib picks a degenerate near-zero range
+        # (same class of issue as the counts figure's y-axis, just here on
+        # pressure instead of staircase count). Computed once from the full
+        # (both-panel) profile_stats so an empty panel still shows the same
+        # depth range as its counterpart, rather than looking broken.
+        ax.set_ylim(depth_range_ymax + depth_range_pad, depth_range_ymin - depth_range_pad)
+
+    if not profile_stats.empty:
+        depth_range_ymin = profile_stats['p_min_clamped'].min()
+        depth_range_ymax = profile_stats['p_max'].max()
+    else:
+        depth_range_ymin, depth_range_ymax = 0.0, 100.0
+    depth_range_pad = max((depth_range_ymax - depth_range_ymin) * 0.05, 10.0)
 
     sm = plt.cm.ScalarMappable(cmap=cmap_count, norm=count_norm)
     sm.set_array([])
