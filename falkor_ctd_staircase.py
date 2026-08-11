@@ -591,11 +591,6 @@ def main():
     plt.close(fig)
 
     # Figure 2: Mixed-layer height
-    # Fallback to the full profile depth range if NO staircases were found
-    # anywhere this run (ml entirely empty) - otherwise use the actual
-    # mixed-layer depth range so the figure zooms to where the data is.
-    ml_ymin, ml_ymax = (ml['p'].min(), ml['p'].max()) if not ml.empty else (p_full_ymin, p_full_ymax)
-
     def _plot_ml_height(ax, ml_sub):
         sc = None
         if not ml_sub.empty:
@@ -605,7 +600,10 @@ def main():
         ax.invert_yaxis()
         ax.grid(True, **GRID_KW)
         ax.set_ylabel('Pressure (dbar)')
-        ax.set_ylim(ml_ymax, ml_ymin)
+        # Full water-column range, same as every other figure in this suite
+        # (not just the depth band where staircases happen to sit) - keeps
+        # all 7 figures visually consistent/comparable at a glance.
+        ax.set_ylim(p_full_ymax, p_full_ymin)
         return sc
 
     fig, (ax_down, ax_up) = plt.subplots(2, 1, figsize=(16, 10), sharex=True)
@@ -627,10 +625,6 @@ def main():
     df_ls_down, df_ls_up = split_down_up(df_ls)
 
     # Figure 3: Turner angle
-    # Same fallback pattern as ml_height above, but against df_ls (all
-    # layers, not just mixed ones) since that's this figure's own data source.
-    turner_ymin, turner_ymax = (df_ls['p'].min(), df_ls['p'].max()) if not df_ls.empty else (p_full_ymin, p_full_ymax)
-
     def _plot_turner(ax, df_ls_sub):
         sc = None
         if not df_ls_sub.empty:
@@ -640,7 +634,8 @@ def main():
         ax.invert_yaxis()
         ax.grid(True, **GRID_KW)
         ax.set_ylabel('Pressure (dbar)')
-        ax.set_ylim(turner_ymax, turner_ymin)
+        # Full water-column range, same as every other figure - see ml_height.
+        ax.set_ylim(p_full_ymax, p_full_ymin)
         return sc
 
     fig, (ax_down, ax_up) = plt.subplots(2, 1, figsize=(16, 10), sharex=True)
@@ -811,21 +806,11 @@ def main():
         ax.invert_yaxis()
         ax.grid(True, **GRID_KW)
         ax.set_ylabel('Pressure (dbar)')
-        # Explicit shared range - if this panel's own casts all found zero
-        # staircases (profile_stats_sub empty), there's nothing to anchor
-        # autoscale to and matplotlib picks a degenerate near-zero range
-        # (same class of issue as the counts figure's y-axis, just here on
-        # pressure instead of staircase count). Computed once from the full
-        # (both-panel) profile_stats so an empty panel still shows the same
-        # depth range as its counterpart, rather than looking broken.
-        ax.set_ylim(depth_range_ymax + depth_range_pad, depth_range_ymin - depth_range_pad)
-
-    if not profile_stats.empty:
-        depth_range_ymin = profile_stats['p_min_clamped'].min()
-        depth_range_ymax = profile_stats['p_max'].max()
-    else:
-        depth_range_ymin, depth_range_ymax = 0.0, 100.0
-    depth_range_pad = max((depth_range_ymax - depth_range_ymin) * 0.05, 10.0)
+        # Full water-column range, same as every other figure in this suite
+        # (not just wherever the detected staircases happen to sit) - also
+        # sidesteps the empty-panel-collapses-to-a-degenerate-range issue
+        # the other figures had, since p_full_ymin/ymax always has real data.
+        ax.set_ylim(p_full_ymax, p_full_ymin)
 
     sm = plt.cm.ScalarMappable(cmap=cmap_count, norm=count_norm)
     sm.set_array([])
