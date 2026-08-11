@@ -30,6 +30,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import xarray as xr
+import yaml
 
 TROP_WTRN_ATL_EXTENT = [-63, -40.75, 4, 19]
 
@@ -87,16 +88,14 @@ POLARITY_STYLE = {
 
 TAIL_DAYS = 21  # how much of each eddy's recent track to draw as a tail
 
-# Platforms to overlay: mirrors SPICE_CMEMS_SAT.py's PLATFORMS list/pattern,
-# duplicated rather than imported - SPICE_CMEMS_SAT.py runs its whole
-# download/plot pipeline as a side effect of being imported (its plotting
-# loop isn't gated behind if __name__ == "__main__"), so importing from it
-# directly isn't safe. Keep this list in sync by hand if PLATFORMS changes
-# there (e.g. re-enabling Falkor, adding another glider).
-PLATFORMS = [
-    {"name": "ru29", "csv": "ru29_latest_track.csv", "marker": "*", "color": "gold", "markersize": 10, "enabled": True},
-    {"name": "Falkor (too)", "csv": "falkor_track.csv", "marker": "^", "color": "magenta", "markersize": 8, "enabled": False},
-]
+# Platforms to overlay: single shared source of truth in
+# configs/platforms.yml - also read by SPICE_CMEMS_SAT.py and
+# eddy_12N_forecast.py, so toggling "enabled" there (e.g. re-enabling
+# Falkor, adding another glider) takes effect everywhere at once, no
+# hand-sync needed across scripts anymore.
+_configdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs')
+with open(os.path.join(_configdir, 'platforms.yml')) as _f:
+    PLATFORMS = yaml.safe_load(_f)['platforms']
 ACTIVE_PLATFORMS = [p for p in PLATFORMS if p.get("enabled", True)]
 PLATFORM_TAIL_DAYS = 7  # trims only the drawn tail line, never the latest-position marker
 

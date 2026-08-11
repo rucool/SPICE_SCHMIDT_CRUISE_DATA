@@ -71,22 +71,20 @@ COLUMNS_CFG = _CFG.get('columns') or []
 
 POLARITIES = ("anticyclonic", "cyclonic")
 
-# Mirrors SPICE_CMEMS_SAT.py's/eddy_trajectory_plot.py's PLATFORMS list
-# (name + track CSV + enabled flag - no marker/color needed here, this
-# isn't a map). Duplicated rather than imported for the same reason noted
-# in eddy_trajectory_plot.py: those scripts aren't safely importable
-# modules. Keep "enabled" in sync by hand with those two scripts - it's the
-# same knob (e.g. Falkor (too) is off until the official cruise starts,
-# see project memory). A disabled platform's distance fields are left out
-# of AVAILABLE_FIELDS entirely, so if configs/eddy_12N_forecast.yml's
-# `columns` list still names one, it's skipped with a warning (same as any
-# unrecognized column) rather than reporting a distance nobody's vouching
-# for - and it starts working again automatically the moment this list's
-# "enabled" is flipped back to True, no yml edit needed.
-PLATFORMS = [
-    {"name": "ru29", "csv": "ru29_latest_track.csv", "enabled": True},
-    {"name": "Falkor (too)", "csv": "falkor_track.csv", "enabled": False},
-]
+# Single shared source of truth in configs/platforms.yml - also read by
+# SPICE_CMEMS_SAT.py and eddy_trajectory_plot.py, so toggling "enabled"
+# there (e.g. Falkor (too), off until the official cruise starts - see
+# project memory) takes effect everywhere at once, no hand-sync needed
+# across scripts anymore. That file has marker/color/markersize too - not
+# needed here, this isn't a map, just ignored. A disabled platform's
+# distance fields are left out of AVAILABLE_FIELDS entirely, so if
+# configs/eddy_12N_forecast.yml's `columns` list still names one, it's
+# skipped with a warning (same as any unrecognized column) rather than
+# reporting a distance nobody's vouching for - and it starts working again
+# automatically the moment configs/platforms.yml re-enables it, no yml
+# edit needed here.
+with open(os.path.join(_configdir, 'platforms.yml')) as _f:
+    PLATFORMS = yaml.safe_load(_f)['platforms']
 ACTIVE_PLATFORMS = [p for p in PLATFORMS if p.get("enabled", True)]
 
 

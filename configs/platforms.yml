@@ -1,0 +1,34 @@
+# Shared platform-track overlay list, used by SPICE_CMEMS_SAT.py,
+# eddy_trajectory_plot.py, and eddy_12N_forecast.py. Single source of
+# truth - previously each of those three scripts kept its own hand-copied
+# PLATFORMS list, which is how Falkor (too)'s "enabled" flag drifted out of
+# sync between them. Each entry needs a time,lat,lon CSV written by its own
+# fetch script (ru29_staircase.py for ru29, get_falkor_position.py for
+# Falkor (too)).
+#
+# Flip `enabled` to turn a platform's overlay on/off everywhere at once,
+# without removing it. eddy_12N_forecast.py's per-platform distance columns
+# follow the same flag - a disabled platform's dist_<platform>_rt_km/
+# dist_<platform>_lag_km columns are skipped with a run-time warning if
+# still named in configs/eddy_12N_forecast.yml's `columns` list, and start
+# working again automatically the moment this file re-enables it (no yml
+# edit needed there).
+#
+# marker/color/markersize are only used by the two map scripts
+# (SPICE_CMEMS_SAT.py, eddy_trajectory_plot.py) and ignored by
+# eddy_12N_forecast.py, which only needs name/csv/enabled. Tails are always
+# white on the maps; only the latest-position marker varies so platforms
+# stay distinguishable as more get added.
+platforms:
+  - name: ru29
+    csv: ru29_latest_track.csv
+    marker: "*"
+    color: gold
+    markersize: 10
+    enabled: true
+  - name: Falkor (too)
+    csv: falkor_track.csv
+    marker: "^"
+    color: magenta
+    markersize: 8
+    enabled: true

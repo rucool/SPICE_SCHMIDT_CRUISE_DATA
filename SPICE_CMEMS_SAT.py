@@ -12,6 +12,9 @@ import cmocean.cm as cmo
 import dask
 import os
 import glob
+import yaml
+
+_configdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs')
 
 
 arg_parser = argparse.ArgumentParser(description='Create CMEMS SSH SST CHL maps',
@@ -206,12 +209,12 @@ FIG_BASE_DIR = args.save_dir
 # written by that platform's own fetch script) + legend marker style for its
 # latest position. Tails are always white; only the latest-position marker
 # varies so platforms stay distinguishable as more get added (e.g. more
-# gliders alongside ru29 and Falkor (too) later in the cruise).
-PLATFORMS = [
-    {"name": "ru29", "csv": "ru29_latest_track.csv", "marker": "*", "color": "gold", "markersize": 10, "enabled": True},
-    # off until the official cruise starts - flip to True to bring Falkor back
-    {"name": "Falkor (too)", "csv": "falkor_track.csv", "marker": "^", "color": "magenta", "markersize": 8, "enabled": False},
-]
+# gliders alongside ru29 and Falkor (too) later in the cruise). Single
+# shared source of truth in configs/platforms.yml - also read by
+# eddy_trajectory_plot.py and eddy_12N_forecast.py, so toggling "enabled"
+# there takes effect everywhere at once (see that file's comments).
+with open(os.path.join(_configdir, 'platforms.yml')) as _f:
+    PLATFORMS = yaml.safe_load(_f)['platforms']
 ACTIVE_PLATFORMS = [p for p in PLATFORMS if p.get("enabled", True)]
 
 # How much trailing history to draw as the white track line on each map. This
