@@ -416,12 +416,23 @@ print("Done.")
 
 
 # --- load results (works from memory or saved CSVs) ---
+_ls_path = f"{ds_id}_staircase_layer_stats.csv"
+_mixes_path = f"{ds_id}_mixes.csv"
 if 'stair_stats_all' in dir() and stair_stats_all:
     df_ls = pd.concat(stair_stats_all, ignore_index=True)
     df_mixes = pd.concat(mixes_all, ignore_index=True) if mixes_all else pd.DataFrame()
+elif os.path.exists(_ls_path):
+    df_ls    = pd.read_csv(_ls_path)
+    df_mixes = pd.read_csv(_mixes_path) if os.path.exists(_mixes_path) else pd.DataFrame()
 else:
-    df_ls    = pd.read_csv(f"{ds_id}_staircase_layer_stats.csv")
-    df_mixes = pd.read_csv(f"{ds_id}_mixes.csv")
+    # No staircases detected in any profile this run (e.g. early in a new
+    # deployment with few profiles so far, or genuinely well-mixed water) -
+    # nothing was written to disk to reload, so build the empty shape the
+    # rest of the script expects instead of crashing on FileNotFoundError.
+    df_ls = pd.DataFrame(columns=['profile_id', 'profile_time', 'staircase_id',
+                                   'p', 'p_start', 'p_end',
+                                   'mixed_layer', 'gradient_layer', 'turner_ang'])
+    df_mixes = pd.DataFrame()
 
 # convert boolean columns that may have been read as strings from CSV
 for col in ['mixed_layer', 'gradient_layer']:
@@ -662,6 +673,15 @@ def add_station_markers(ax, fig, extra_handles=None):
             fig.canvas.draw()
 
 
+# Shared y-axis (pressure) fallback range, computed once from the full
+# per-observation data - used by figures below whose own subset (mixed
+# layers, turner layers, staircase depth stats) can be entirely empty this
+# run (e.g. early in a new deployment before any staircase is found).
+# Without this, an empty subset has nothing for matplotlib to autoscale
+# against and the y-axis silently collapses to a degenerate near-zero
+# range instead of showing the real water-column depth.
+p_full_ymin, p_full_ymax = gdf_dist['pressure'].min(), gdf_dist['pressure'].max()
+
 # Figure 1: Conservative Temperature
 fig, ax = plt.subplots(figsize=(16, 5))
 fig.subplots_adjust(bottom=0.22)
@@ -699,6 +719,7 @@ if not ml.empty:
     cb = plt.colorbar(sc, ax=ax, pad=0.01, extend='max')
     cb.set_label('Layer height (dbar)')
 ax.invert_yaxis()
+ax.set_ylim(p_full_ymax, p_full_ymin)
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('Pressure (dbar)')
 ax.set_xlabel('Distance along track (km)')
@@ -720,6 +741,7 @@ if not df_ls.empty:
     cb = plt.colorbar(sc, ax=ax, pad=0.01)
     cb.set_label('Turner angle (°)')
 ax.invert_yaxis()
+ax.set_ylim(p_full_ymax, p_full_ymin)
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('Pressure (dbar)')
 ax.set_xlabel('Distance along track (km)')
@@ -785,6 +807,12 @@ all_profs['has_staircase'] = all_profs['has_staircase'].fillna(0).astype(int)
 
 print(f"Profiles with staircase: {all_profs.has_staircase.sum()} / {len(all_profs)}")
 print(f"Max staircases in one profile: {profile_stats.n_staircases.max()}")
+
+# Fallback color/y-axis scale for the two staircase-count figures below,
+# used when profile_stats is entirely empty (zero staircases anywhere this
+# run) - otherwise plt.Normalize/set_ylim get a NaN vmax from .max() on an
+# empty column and the count scatter has nothing to anchor autoscale to.
+n_vmax = profile_stats['n_staircases'].max() if not profile_stats.empty else 1
 
 
 #Figure: Potential density hovmoller
@@ -870,7 +898,7 @@ ax.grid(True, **GRID_KW)
 ax.set_ylabel('# Staircases detected')
 ax.set_xlabel('Distance along track (km)')
 ax.set_title(f"{title_datetime_str}\nStaircase count per profile  |  bottom strip = presence (green) / absence (red)", loc='left')
-ax.set_ylim(-0.5)
+ax.set_ylim(-0.5, n_vmax + 0.5)
 add_station_markers(ax, fig)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, f'{glider}_counts', f'{glider}_counts_{run_ts}.png'), dpi=200, bbox_inches='tight')
@@ -878,7 +906,7 @@ plt.show()
 
 
 #  Figure: Staircase depth range per profile
-count_norm = plt.Normalize(vmin=1, vmax=profile_stats['n_staircases'].max())
+count_norm = plt.Normalize(vmin=1, vmax=n_vmax)
 cmap_count = cmo.ice_r
 
 depth_legend = [
@@ -915,6 +943,13 @@ cb = plt.colorbar(sm, ax=ax, pad=0.01)
 cb.set_label('# staircases')
 
 ax.invert_yaxis()
+if not profile_stats.empty:
+    depth_range_ymin = profile_stats['p_min_clamped'].min()
+    depth_range_ymax = profile_stats['p_max'].max()
+else:
+    depth_range_ymin, depth_range_ymax = p_full_ymin, p_full_ymax
+depth_range_pad = max((depth_range_ymax - depth_range_ymin) * 0.05, 10.0)
+ax.set_ylim(depth_range_ymax + depth_range_pad, depth_range_ymin - depth_range_pad)
 ax.grid(True, **GRID_KW)
 ax.set_ylabel('Pressure (dbar)')
 ax.set_xlabel('Distance along track (km)')
