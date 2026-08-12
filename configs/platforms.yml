@@ -38,3 +38,9 @@ platforms:
     color: darkblue
     markersize: 10
     enabled: true
+  - name: capex690
+    csv: capex690_latest_track.csv
+    marker: "*"
+    color: palegreen
+    markersize: 10
+    enabled: false
