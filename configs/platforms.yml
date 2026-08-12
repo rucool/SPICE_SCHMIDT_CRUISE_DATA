@@ -4,7 +4,7 @@
 # PLATFORMS list, which is how Falkor (too)'s "enabled" flag drifted out of
 # sync between them. Each entry needs a time,lat,lon CSV written by its own
 # fetch script (ru29_staircase.py for ru29, get_falkor_position.py for
-# Falkor (too)).
+# Falkor (too), gliders_staircase.py for VOTO gliders like SEA044_M121).
 #
 # Flip `enabled` to turn a platform's overlay on/off everywhere at once,
 # without removing it. eddy_12N_forecast.py's per-platform distance columns
@@ -31,4 +31,10 @@ platforms:
     marker: "^"
     color: magenta
     markersize: 8
+    enabled: true
+  - name: SEA044_M121
+    csv: nrt_SEA044_M121_latest_track.csv
+    marker: "*"
+    color: darkblue
+    markersize: 10
     enabled: true
