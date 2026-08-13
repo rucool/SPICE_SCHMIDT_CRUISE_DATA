@@ -1,13 +1,22 @@
 # Configuration file to set x and y lims for TS diagrams
+# min and max: restrict the plotting limits
+# qcmin: remove any data points below this value
+# qcmax: remove any data points above this value
 absolute_salinity:
   title: Absolute Salinity
   min:
   max:
+  qcmin: 20
+  qcmax:
 conservative_temperature:
   title: Conservative Temperature
   min:
   max:
+  qcmin:
+  qcmax:
 depth:
   title: Depth
   min:
   max:
+  qcmin:
+  qcmax:

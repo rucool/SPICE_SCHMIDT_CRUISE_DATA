@@ -2,7 +2,7 @@
 
 """
 Author: Lori Garzio on 7/15/2026
-Last modified: 7/22/2026
+Last modified: 8/13/2026
 Generate T-S diagrams of real-time glider data using Conservative
 Temperature and Absolute Salinity, colored by depth.
 The full timeseries, last 24 hours, and last 48 hours
@@ -104,6 +104,9 @@ def main(args):
         except AttributeError:
             print(f'Depth not found in dataset: {dsid}')
             sys.exit(1)
+
+    sal = cf.apply_qc(sal, d, qcmin=config_file['absolute_salinity'].get('qcmin'), qcmax=config_file['absolute_salinity'].get('qcmax'))
+    temp = cf.apply_qc(temp, d, qcmin=config_file['conservative_temperature'].get('qcmin'), qcmax=config_file['conservative_temperature'].get('qcmax'))
 
     scatter_args = dict(c=d, cmap=cmo.cm.deep, s=10, edgecolor='None')
     
