@@ -1,71 +1,102 @@
 # Configuration file to set default color maps for plotting variables
+# min and max: restrict the plotting limits
+# qcmin: remove any data points below this value
+# qcmax: remove any data points above this value
 conductivity:
   cmap: jet
   title: Conductivity
   min:
   max:
+  qcmin:
+  qcmax:
 conservative_temperature:
   cmap: cmo.thermal
   title: Conservative Temperature
   min:
   max:
+  qcmin:
+  qcmax:
 absolute_salinity:
   cmap: cmo.haline
   title: Absolute Salinity
   min:
   max:
+  qcmin:
+  qcmax:
 potential_density:
   cmap: cmo.dense
   title: Potential Density
   min:
   max:
+  qcmin:
+  qcmax:
 chlorophyll_a:
   cmap: cmo.algae
   title: Chlorophyll-a
   min:
   max:
+  qcmin:
+  qcmax:
 chlorophyll:
   cmap: cmo.algae
   title: Chlorophyll-a 470nm
   min:
   max:
+  qcmin: 0
+  qcmax:
 beta_700nm:
   cmap: cmo.thermal
   title: Backscatter 700nm
   min:
   max:
+  qcmin:
+  qcmax:
 backscatter:
   cmap: cmo.thermal
   title: Backscatter 700nm
   min:
   max:
+  qcmin:
+  qcmax:
 cdom:
   cmap: cmo.thermal
   title: CDOM
   min:
   max:
+  qcmin:
+  qcmax:
 oxygen_concentration:
   cmap: cmo.deep
   title: Oxygen Concentration
   min:
   max:
+  qcmin:
+  qcmax:
 oxygen_concentration_shifted:
   cmap: cmo.deep
   title: Oxygen Concentration Shifted
   min:
   max:
+  qcmin:
+  qcmax:
 oxygen_concentration_shifted_mgL:
   cmap: cmo.deep
   title: Oxygen Concentration Shifted mg/L
   min:
   max:
+  qcmin:
+  qcmax:
 oxygen_saturation:
   cmap: cmo.deep
   title: Oxygen Saturation
   min:
   max:
+  qcmin:
+  qcmax:
 oxygen_saturation_shifted:
   cmap: cmo.deep
   title: Oxygen Saturation Shifted
   min:
   max:
+  qcmin:
+  qcmax:

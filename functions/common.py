@@ -2,9 +2,10 @@
 
 """
 Author: Lori Garzio on 7/10/2026
-Last modified: 7/21/2026
+Last modified: 8/213/2026
 """
 
+import os
 import gsw
 from erddapy import ERDDAP
 import numpy as np
@@ -32,6 +33,37 @@ def add_profile_time(ds, profile_var='profile_num'):
     
     ds['profile_time'] = da
     return ds
+
+
+def apply_qc(da, d, qcmin=None, qcmax=None):
+    # Apply basic quality control to a DataArray
+    # d is the depth variable
+
+    # find indices where depth is shallower than 1 m and mask those values
+    idx = np.argwhere(d.values < 1)
+    if idx.size > 0:
+        da.values[idx.T] = np.nan
+
+    if qcmin is not None:
+        da = da.where(~(da < qcmin), np.nan)
+    if qcmax is not None:
+        da = da.where(~(da > qcmax), np.nan)
+
+    return da
+
+
+def get_config_file(configdir, deploy):
+    """Check if there is a deployment-specific config file, otherwise use the default"""
+    # check if there is a deployment-specific config file, otherwise use the default
+    if os.path.isfile(os.path.join(configdir, f'plot_vars_glider_{deploy}.yml')):
+        configfile = os.path.join(configdir, f'plot_vars_glider_{deploy}.yml')
+    else:
+        if os.path.isfile(os.path.join(configdir, 'plot_vars_glider.yml')):
+            configfile = os.path.join(configdir, 'plot_vars_glider.yml')
+        else:
+            raise FileNotFoundError(f'No config file found for deployment {deploy} and no default config file found in {configdir}.')
+    
+    return configfile
 
 
 def get_erddap_dataset(server, ds_id, variables=None, constraints=None):

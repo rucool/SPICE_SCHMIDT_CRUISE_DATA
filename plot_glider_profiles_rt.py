@@ -2,7 +2,7 @@
 
 """
 Author: Lori Garzio on 7/10/2026
-Last modified: 7/21/2026
+Last modified: 8/13/2026
 Plot profiles of real-time glider data, colored by time.
 The full timeseries, last 24 hours, and last 48 hours
 can be plotted. The default is to plot the full timeseries.
@@ -87,15 +87,8 @@ def main(args):
     # get plotting variable config file
     root_dir = os.path.dirname(os.path.abspath(__file__))
     configdir = os.path.join(root_dir, 'configs')
-
-    # check if there is a deployment-specific config file, otherwise use the default
-    if os.path.isfile(os.path.join(configdir, f'plot_vars_glider_{deploy}.yml')):
-        configfile = os.path.join(configdir, f'plot_vars_glider_{deploy}.yml')
-    else:
-        if os.path.isfile(os.path.join(configdir, 'plot_vars_glider.yml')):
-            configfile = os.path.join(configdir, 'plot_vars_glider.yml')
-        else:
-            raise FileNotFoundError(f'No config file found for deployment {deploy} and no default config file found in {configdir}.')
+    configfile = cf.get_config_file(configdir, deploy)
+    
     with open(configfile) as f:
         plt_vars = yaml.safe_load(f)
 
@@ -121,6 +114,10 @@ def main(args):
         except KeyError:
             continue
 
+        # apply some basic QC
+        d = ds[depth_var]
+        variable = cf.apply_qc(variable, d, qcmin=info.get('qcmin'), qcmax=info.get('qcmax'))
+        
         scatter_args = dict(s=10, edgecolor='None')
 
         # plot profiles, colored by time
