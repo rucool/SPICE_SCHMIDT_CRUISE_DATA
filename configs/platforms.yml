@@ -43,4 +43,4 @@ platforms:
     marker: "*"
     color: palegreen
     markersize: 10
-    enabled: false
+    enabled: true
