@@ -838,6 +838,19 @@ if TURNAROUND_DETECTED:
     fig.subplots_adjust(bottom=0.14, hspace=0.35)
     sc_out = _plot_turner(ax_out, df_ls_out)
     sc_ret = _plot_turner(ax_ret, df_ls_ret)
+    # Pin both legs to the same pressure range, computed from the combined
+    # (pre-split) data - same fix as the CT/sigma vmin/vmax above, applied
+    # to the y-axis instead of the color axis. df_ls only has rows where a
+    # staircase layer was actually detected (unlike CT/sigma, which plot
+    # every pressure bin of every profile), so each leg's own min/max can
+    # differ a lot - e.g. no near-surface layers on one leg - letting the
+    # two panels' y-axes silently diverge even though the underlying
+    # pressure range is otherwise comparable across legs.
+    if not df_ls.empty:
+        _p_min, _p_max = df_ls['p'].min(), df_ls['p'].max()
+        _p_pad = (_p_max - _p_min) * 0.05
+        ax_out.set_ylim(_p_max + _p_pad, _p_min - _p_pad)
+        ax_ret.set_ylim(_p_max + _p_pad, _p_min - _p_pad)
     ax_out.set_title(f"{title_datetime_str}\nTurner angle - Eastbound leg  (red = salt fingering >45°, blue = diffusive convection <-45°)", loc='left')
     ax_ret.set_title("Westbound leg (return)", loc='left')
     sc_for_cb = sc_out if sc_out is not None else sc_ret
