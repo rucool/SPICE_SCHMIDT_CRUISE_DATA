@@ -761,17 +761,17 @@ if TURNAROUND_DETECTED:
     _plot_ct(ax_ret, gdf_ret, ml_ret, ct_vmin, ct_vmax)
     ax_out.set_title(f"{title_datetime_str}\nConservative Temperature - Eastbound leg  |  white/black = staircase mixed layers", loc='left')
     ax_ret.set_title("Westbound leg (return)", loc='left')
+    add_station_markers([ax_out, ax_ret], fig)
     cb = fig.colorbar(sc, ax=[ax_out, ax_ret], pad=0.01)
     cb.set_label('CT (°C)')
-    add_station_markers([ax_out, ax_ret], fig)
 else:
     fig, ax = plt.subplots(figsize=(16, 5))
     fig.subplots_adjust(bottom=0.22)
     sc = _plot_ct(ax, gdf_dist, ml)
     ax.set_title(f"{title_datetime_str}\nConservative Temperature  |  white/black = staircase mixed layers", loc='left')
+    add_station_markers(ax, fig)
     cb = plt.colorbar(sc, ax=ax, pad=0.01)
     cb.set_label('CT (°C)')
-    add_station_markers(ax, fig)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_CT', f'ru29_CT_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
@@ -800,19 +800,19 @@ if TURNAROUND_DETECTED:
     ax_out.set_title(f"{title_datetime_str}\nMixed-layer height - Eastbound leg", loc='left')
     ax_ret.set_title("Westbound leg (return)", loc='left')
     sc_for_cb = sc_out if sc_out is not None else sc_ret
+    add_station_markers([ax_out, ax_ret], fig)
     if sc_for_cb is not None:
         cb = fig.colorbar(sc_for_cb, ax=[ax_out, ax_ret], pad=0.01, extend='max')
         cb.set_label('Layer height (dbar)')
-    add_station_markers([ax_out, ax_ret], fig)
 else:
     fig, ax = plt.subplots(figsize=(16, 5))
     fig.subplots_adjust(bottom=0.22)
     sc = _plot_ml_height(ax, ml)
     ax.set_title(f"{title_datetime_str}\nMixed-layer height", loc='left')
+    add_station_markers(ax, fig)
     if sc is not None:
         cb = plt.colorbar(sc, ax=ax, pad=0.01, extend='max')
         cb.set_label('Layer height (dbar)')
-    add_station_markers(ax, fig)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_ml_height', f'ru29_ml_height_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
@@ -841,19 +841,19 @@ if TURNAROUND_DETECTED:
     ax_out.set_title(f"{title_datetime_str}\nTurner angle - Eastbound leg  (red = salt fingering >45°, blue = diffusive convection <-45°)", loc='left')
     ax_ret.set_title("Westbound leg (return)", loc='left')
     sc_for_cb = sc_out if sc_out is not None else sc_ret
+    add_station_markers([ax_out, ax_ret], fig)
     if sc_for_cb is not None:
         cb = fig.colorbar(sc_for_cb, ax=[ax_out, ax_ret], pad=0.01)
         cb.set_label('Turner angle (°)')
-    add_station_markers([ax_out, ax_ret], fig)
 else:
     fig, ax = plt.subplots(figsize=(16, 5))
     fig.subplots_adjust(bottom=0.22)
     sc = _plot_turner(ax, df_ls)
     ax.set_title(f"{title_datetime_str}\nTurner angle  (red = salt fingering >45°, blue = diffusive convection <-45°)", loc='left')
+    add_station_markers(ax, fig)
     if sc is not None:
         cb = plt.colorbar(sc, ax=ax, pad=0.01)
         cb.set_label('Turner angle (°)')
-    add_station_markers(ax, fig)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_turner', f'ru29_turner_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
@@ -946,17 +946,17 @@ if TURNAROUND_DETECTED:
     _plot_sigma(ax_ret, df_results_ret, ml_ret, sigma_vmin, sigma_vmax)
     ax_out.set_title(f"{title_datetime_str}\nPotential density (sigma1) - Eastbound leg  |  white/black = staircase mixed layers", loc='left')
     ax_ret.set_title("Westbound leg (return)", loc='left')
+    add_station_markers([ax_out, ax_ret], fig)
     cb = fig.colorbar(sc, ax=[ax_out, ax_ret], pad=0.01)
     cb.set_label(' (kg m$^{-3}$)')
-    add_station_markers([ax_out, ax_ret], fig)
 else:
     fig, ax = plt.subplots(figsize=(16, 5))
     fig.subplots_adjust(bottom=0.22)
     sc = _plot_sigma(ax, df_results, ml)
     ax.set_title(f"{title_datetime_str}\nPotential density (sigma1)  |  white/black = staircase mixed layers", loc='left')
+    add_station_markers(ax, fig)
     cb = plt.colorbar(sc, ax=ax, pad=0.01)
     cb.set_label(' (kg m$^{-3}$)')
-    add_station_markers(ax, fig)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_sigma', f'ru29_sigma_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
@@ -1045,17 +1045,17 @@ if TURNAROUND_DETECTED:
     _plot_counts(ax_ret, all_profs_ret, profile_stats_ret, n_vmin, n_vmax)
     ax_out.set_title(f"{title_datetime_str}\nStaircase count per profile - Eastbound leg  |  bottom strip = presence (green) / absence (red)", loc='left')
     ax_ret.set_title("Westbound leg (return)", loc='left')
+    add_station_markers([ax_out, ax_ret], fig)
     cb = fig.colorbar(sc, ax=[ax_out, ax_ret], pad=0.01)
     cb.set_label('# staircases')
-    add_station_markers([ax_out, ax_ret], fig)
 else:
     fig, ax = plt.subplots(figsize=(16, 5))
     fig.subplots_adjust(bottom=0.22)
     sc = _plot_counts(ax, all_profs, profile_stats, None, None)
     ax.set_title(f"{title_datetime_str}\nStaircase count per profile  |  bottom strip = presence (green) / absence (red)", loc='left')
+    add_station_markers(ax, fig)
     cb = plt.colorbar(sc, ax=ax, pad=0.01)
     cb.set_label('# staircases')
-    add_station_markers(ax, fig)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_counts', f'ru29_counts_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
@@ -1111,17 +1111,17 @@ if TURNAROUND_DETECTED:
     _plot_depth_range(ax_ret, profile_stats_ret)
     ax_out.set_title(f"{title_datetime_str}\nStaircase depth range per profile - Eastbound leg  |  bar = min-max, markers = shallowest / median / deepest", loc='left')
     ax_ret.set_title("Westbound leg (return)", loc='left')
+    add_station_markers([ax_out, ax_ret], fig, extra_handles=depth_legend)
     cb = fig.colorbar(sm, ax=[ax_out, ax_ret], pad=0.01)
     cb.set_label('# staircases')
-    add_station_markers([ax_out, ax_ret], fig, extra_handles=depth_legend)
 else:
     fig, ax = plt.subplots(figsize=(16, 5))
     fig.subplots_adjust(bottom=0.22)
     _plot_depth_range(ax, profile_stats)
+    add_station_markers(ax, fig, extra_handles=depth_legend)
     cb = plt.colorbar(sm, ax=ax, pad=0.01)
     cb.set_label('# staircases')
     ax.set_title(f"{title_datetime_str}\nStaircase depth range per profile  |  bar = min-max, markers = shallowest / median / deepest", loc='left')
-    add_station_markers(ax, fig, extra_handles=depth_legend)
 plt.gcf().canvas.draw()  # force full render before tight-bbox crop
 plt.savefig(os.path.join(daily_dir, 'ru29_depth_range', f'ru29_depth_range_{run_ts}.png'), dpi=200, bbox_inches='tight')
 plt.show()
