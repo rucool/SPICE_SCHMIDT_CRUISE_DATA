@@ -236,7 +236,17 @@ def get_platform_track(csv_name):
     try:
         csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), csv_name)
         df = pd.read_csv(csv_path)
-        df["time"] = pd.to_datetime(df["time"])
+        # format="ISO8601" (not left unspecified) - some track CSVs mix
+        # timestamps with and without a fractional-seconds component (e.g.
+        # Falkor's GPS track merges 4 raw NMEA feeds with slightly different
+        # formatting; VOTO's profile_time is derived via .mean() and can
+        # land exactly on a whole second). Without an explicit format,
+        # pandas infers one from the first rows and hard-fails the instant
+        # a later row does not match it, silently dropping the whole
+        # platform from every figure in the run - confirmed via
+        # SPICE_CMEMS_SAT_cruise.log's "doesn't match format
+        # '%Y-%m-%d %H:%M:%S.%f%z'" warnings on 2026-08-16.
+        df["time"] = pd.to_datetime(df["time"], format="ISO8601")
         return df.sort_values("time").reset_index(drop=True)
     except Exception as e:
         print(f"Warning: could not load track from {csv_name}: {e}")
