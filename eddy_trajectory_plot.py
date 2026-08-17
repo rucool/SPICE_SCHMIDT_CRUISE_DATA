@@ -147,7 +147,11 @@ def get_platform_track(csv_name):
     try:
         csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), csv_name)
         df = pd.read_csv(csv_path)
-        df["time"] = pd.to_datetime(df["time"])
+        # format="ISO8601" - see SPICE_CMEMS_SAT.py's get_platform_track for
+        # why (mixed with/without-fractional-seconds timestamps in Falkor's
+        # and VOTO's track CSVs used to hard-fail pandas' format inference
+        # and silently drop the whole platform - confirmed 2026-08-16).
+        df["time"] = pd.to_datetime(df["time"], format="ISO8601")
         return df.sort_values("time").reset_index(drop=True)
     except Exception as e:
         print(f"Warning: could not load track from {csv_name}: {e}")
